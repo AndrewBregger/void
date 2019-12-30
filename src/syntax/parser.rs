@@ -5,6 +5,8 @@ use super::ast::*;
 use super::tokenstream::TokenStream;
 use std::iter::Iterator;
 use std::path::PathBuf;
+use std::cmp::{Eq, PartialEq};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Snafu)]
 pub enum Error {
@@ -18,19 +20,67 @@ pub enum Error {
     UnexpectedEof {
         expected: TokenKind,
         pos: Position
+    },
+    #[snafu(display("{} | Expecting expression following comma, found {}", pos.to_string(), found.to_string()))]
+    ExpectedExprAfterComma {
+        found: Token,
+        pos: Position
     }
+
+
+
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Restriction {
+    TypeExprOnly,
+}
+
+#[derive(Debug, Clone)]
+struct Restrictions {
+    res: HashSet<Restriction>
+}
+
+impl Restrictions {
+    fn add(&mut self, res: Restriction) {
+        self.res.insert(res);
+    }
+
+    fn with(mut self, res: Restriction) -> Self {
+        self.res.insert(res);
+        self
+    }
+
+    fn extend(&mut self, res: Restrictions) {
+        for res in res.res {
+            self.add(res);
+        }
+    }
+
+    fn check(&self, res: Restriction) -> bool {
+        self.res.contains(&res)
+    }
+}
+
+impl std::default::Default for Restrictions {
+    fn default() -> Self {
+        Self {
+            res: HashSet::new(),
+        }
+    }
+}
+    
+    
+
 pub struct Parser<'a> {
     stream: TokenStream<'a>,
+    restrictions: Restrictions,
     index: usize,
     token: Option<Token>,
     peek: Option<Token>,
 }
-
-
 
 impl<'a> Parser<'a> {
     pub fn new(source: &'a str, path: PathBuf) -> Self {
@@ -40,6 +90,7 @@ impl<'a> Parser<'a> {
         Self {
             stream,
             index: 0usize,
+            restrictions: Restrictions::default(),
             token,
             peek
         }
@@ -64,10 +115,11 @@ impl<'a> Parser<'a> {
     }
 
 
-    fn expect(&mut self, kind: TokenKind) -> Result<bool> {
+    fn expect(&mut self, kind: TokenKind) -> Result<Token> {
         if self.check(&kind) {
+            let token = self.token.as_ref().expect("Attempting to unwrap token").clone();
             self.advance();
-            Ok(true)
+            Ok(token)
         }
         else {
             match &self.token {
@@ -112,23 +164,85 @@ impl<'a> Parser<'a> {
         Ok(Ptr::new(Expr::new(kind, pos)))
     }
 
+    fn parse_name(&mut self) -> Result<Ptr<Expr>> {
+        let ident = self.parse_ident()?;
+        let mut pos = ident.pos().clone();
+
+        let kind = if self.check(&TokenKind::Control(Ctrl::Brace(Orientation::Left))) {
+            pos.span.extend(1);
+            self.advance();
+            let mut types = Vec::new();
+            let mut expect_expression = false;
+            while !self.check(&TokenKind::Control(Ctrl::Brace(Orientation::Left))) {
+                let expr = self.parse_expr_with_res(Restrictions::default().with(Restriction::TypeExprOnly))?;
+                pos.span.extend(expr.pos().len());
+                types.push(expr);
+
+                if self.check(&TokenKind::Control(Ctrl::Comma)) {
+                    pos.span.extend(1);
+                    self.advance();
+                    expect_expression = true;
+                }
+                else {
+                    expect_expression = false;
+                    break;
+                }
+            }
+
+            let found = self.expect(TokenKind::Control(Ctrl::Brace(Orientation::Right)))?;
+            pos.span.extend(1);
+
+            if expect_expression {
+                let pos = found.pos().clone();
+                return Err(Error::ExpectedExprAfterComma {
+                    found,
+                    pos,
+                });
+            }
+            else {
+                ExprKind::NameTyped(ident, types)
+            }
+        }
+        else {
+            ExprKind::Name(ident)
+        };
+
+        Ok(Ptr::new(Expr::new(kind, pos)))
+    }
+
     fn parse_bottom_expr(&mut self) -> Result<Ptr<Expr>> {
         if let Some(ref token) = self.token.clone() {
             println!("parse_bottom_expr {}", token.to_string());
-            self.advance();
             let expr =
                 match token.kind() {
-                    TokenKind::Identifier(val)     => Ptr::new(Expr::new(ExprKind::Name(val.clone()), token.pos().clone())),
-                    TokenKind::IntegerLiteral(val) => Ptr::new(Expr::new(ExprKind::IntegerLiteral(*val), token.pos().clone())),
-                    TokenKind::FloatLiteral(val)   => Ptr::new(Expr::new(ExprKind::FloatLiteral(*val), token.pos().clone())),
-                    TokenKind::StringLiteral(val)  => Ptr::new(Expr::new(ExprKind::StringLiteral(val.clone()), token.pos().clone())),
-                    TokenKind::CharLiteral(val)    => Ptr::new(Expr::new(ExprKind::CharLiteral(*val), token.pos().clone())),
+                    TokenKind::Identifier(_) => {
+                        self.parse_name()?
+                    },
+                    TokenKind::IntegerLiteral(val) => {
+                        self.advance();
+                        Ptr::new(Expr::new(ExprKind::IntegerLiteral(*val), token.pos().clone()))
+                    },
+                    TokenKind::FloatLiteral(val)   => {
+                        self.advance();
+                        Ptr::new(Expr::new(ExprKind::FloatLiteral(*val), token.pos().clone()))
+                    },
+                    TokenKind::StringLiteral(val)  => {
+                        self.advance();
+                        Ptr::new(Expr::new(ExprKind::StringLiteral(val.clone()), token.pos().clone()))
+                    },
+                    TokenKind::CharLiteral(val)    => {
+                        self.advance();
+                        Ptr::new(Expr::new(ExprKind::CharLiteral(*val), token.pos().clone()))
+                    },
                     TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
+                        self.advance();
                         let expr = self.parse_expr()?;
                         self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
                         expr
                     },
-                    TokenKind::Control(Ctrl::Bracket(Orientation::Left)) => self.parse_block_expr()?,
+                    TokenKind::Control(Ctrl::Bracket(Orientation::Left)) => {
+                        self.parse_block_expr()?
+                    },
                     // TokenKind::StringLiteral(val) => Expr::new(ExprKind::IntegerLiteral(val), token.pos().clone()),
 
                     _ => unimplemented!()
@@ -144,12 +258,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function_call(&mut self, operand: Ptr<Expr>) -> Result<Ptr<Expr>> {
-        self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Left)))?;
+        let open = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Left)))?;
 
         let mut pos = operand.pos().clone();
         let mut actuals = Vec::new();
 
-        pos.span.extend(1);
+        pos.span.extend(open.pos().len());
         while !self.check(&TokenKind::Control(Ctrl::Paren(Orientation::Right))) {
             let expr = self.parse_expr()?;
             pos.span.extend(expr.pos().len());
@@ -306,6 +420,16 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
+    pub fn parse_expr_with_res(&mut self, res: Restrictions) -> Result<Ptr<Expr>> {
+        let save_res = self.restrictions.clone();
+        self.restrictions.extend(res);
+
+        let expr = self.parse_assoc_expr(1);
+        self.restrictions = save_res;
+
+        expr
+    }
+
     pub fn parse_expr(&mut self) -> Result<Ptr<Expr>> {
         self.parse_assoc_expr(1)
     }
@@ -320,8 +444,10 @@ impl<'a> Parser<'a> {
                     Kw::Fn |
                     Kw::Use |
                     Kw::Trait => {
-//                        let item = self.parse_item()?;
-                        unimplemented!()
+                        let item = self.parse_item()?;
+                        let pos = item.pos().clone();
+                        let kind = StmtKind::ItemStmt(item);
+                        Ok(Ptr::new(Stmt::new(kind, pos)))
                     }
                     _ => {
                         let expr = self.parse_expr()?;
@@ -360,8 +486,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_pattern(&mut self) -> Result<Ptr<Pattern>> {
+        unimplemented!()
+    }
+
+    fn parse_item(&mut self) -> Result<Ptr<Item>> {
+        unimplemented!()
+    }
+
     fn expr_needs_semicolon(&self, expr: &Ptr<Expr>) -> bool {
         match expr.as_ref().kind() {
+            _ => true,
+        }
+    }
+
+    fn item_needs_semicolon(&self, item: &Ptr<Item>) -> bool {
+        match item.as_ref().kind() {
             _ => true,
         }
     }
