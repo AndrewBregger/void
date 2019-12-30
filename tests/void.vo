@@ -1,0 +1,10 @@
+pub fn foo(x: f32, y: f32) f32 {
+    x + y
+}
+
+pub struct Vector[T, N: u32] {
+    data: [N]T,
+}
+
+pub fn parse(*mut self, source: StringView) Object {
+}

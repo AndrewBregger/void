@@ -5,3 +5,4 @@ authors = ["Andrew Bregger <adb3649@tamu.edu>"]
 edition = "2018"
 
 [dependencies]
+snafu = "0.6.0"
