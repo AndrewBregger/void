@@ -358,6 +358,7 @@ impl TreeRender for Param {
         match self.kind() {
             ParamKind::ParamInit(name, init) => {
                 println!("{}Init Param: {}", indent(idx), name.value());
+
                 init.render(idx + 1);
             },
             ParamKind::ParamTyped(name, types) => {
@@ -428,7 +429,7 @@ impl TreeRender for Item {
     fn render(&self, idx: u32) {
         match &self.kind {
             ItemKind::Function(name, tparams, params, ret, expr) => {
-                println!("{}Function: {}", indent(idx), name.value());
+                println!("{}Function: {} {}", indent(idx), name.value(),self.pos().span);
                 tparams.render(idx + 1);
                 println!("{}Params:", indent(idx + 1));
                 for param in params {
@@ -440,7 +441,7 @@ impl TreeRender for Item {
                 expr.render(idx + 1);
             }
             ItemKind::Struct(name, tparams, fields) => {
-                println!("{}Structure: {}", indent(idx), name.value());
+                println!("{}Structure: {} {}", indent(idx), name.value(), self.pos().span);
                 tparams.render(idx + 1);
                 println!("{}Fields:", indent(idx + 1));
                 for field in fields {
@@ -448,16 +449,19 @@ impl TreeRender for Item {
                 }
             }
             ItemKind::LocalInit(_mutability, pattern, init) => {
-                println!("{}Init Local:", indent(idx));
+                println!("{}Init Local: {}", indent(idx), self.pos().span);
+                pattern.render(idx + 1);
                 init.render(idx + 1);
             }
             ItemKind::LocalTyped(_mutability, pattern, types) => {
-                println!("{}Typed Local:", indent(idx));
+                println!("{}Typed Local: {}", indent(idx), self.pos().span);
+                pattern.render(idx + 1);
                 types.render(idx + 1);
             }
             ItemKind::Local(_mutability, pattern, types, init) => {
-                println!("{}Local:", indent(idx));
+                println!("{}Local: {}", indent(idx), self.pos().span);
                 types.render(idx + 1);
+                pattern.render(idx + 1);
                 init.render(idx + 1);
             }
             _ => {}

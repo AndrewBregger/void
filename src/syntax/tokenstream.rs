@@ -63,7 +63,12 @@ impl<'a> TokenStream<'a> {
 
         let value = &self.source[start..end];
 
-        let kind = TokenKind::get_ident_kind(value);
+        let kind = if value == "_" {
+           TokenKind::Control(Ctrl::Underscore) 
+        }
+        else {
+            TokenKind::get_ident_kind(value)
+        };
 
         Some(create_token!(kind, start_column, start, self))
     }
@@ -93,7 +98,6 @@ impl<'a> TokenStream<'a> {
 
                 return Some(create_token!(kind, start_column, start, self));
             }
-
 
             while self.it.clone().next().map_or(false, |e| e.is_numeric()) {
                 self.bump();

@@ -14,14 +14,14 @@ fn main() -> std::io::Result<()> {
     // file.read_to_string(&mut content);
 
     // let test_input = "x.y + 1.0.to_string + y.x(1, 2)";
-    let test_input = "{}";
+    let test_input = "let (x, y) = 1.0";
     // let test_input = "1.0";
     // let test_input = "x";
 
     let mut parser = Parser::new(test_input, PathBuf::new()).ok().unwrap();
 
-    match parser.parse_expr() {
-        Ok(expr) => expr.render(0),
+    match parser.parse_item() {
+        Ok(node) => node.render(0),
         Err(err) => println!("{:?}", err),
     }
 

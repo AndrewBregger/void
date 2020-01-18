@@ -304,6 +304,7 @@ pub enum Ctrl {
     MinusGreater,
     LessMinus,
     EqualLess,
+    Underscore,
 }
 
 impl ToString for Ctrl {
@@ -329,6 +330,7 @@ impl ToString for Ctrl {
             Ctrl::MinusGreater => "->".to_string(),
             Ctrl::LessMinus => "<-".to_string(),
             Ctrl::EqualLess => "=>".to_string(),
+            Ctrl::Underscore => "_".to_string(),
         }
     }
 }

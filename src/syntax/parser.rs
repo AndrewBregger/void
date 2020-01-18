@@ -358,7 +358,6 @@ impl<'a> Parser<'a> {
     /// Handles the parsing of a primary expression.
     fn parse_primary_expr(&mut self) -> Result<Ptr<Expr>> {
         let operand = self.parse_bottom_expr()?;
-
         self.parse_suffix_expr(operand)
     }
 
@@ -430,14 +429,13 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_expr_with_res(&mut self, res: Restrictions) -> Result<Ptr<Expr>> {
-//        let save_res = self.restrictions.clone();
-//        self.restrictions.extend(res);
-//
-//        let expr = self.parse_assoc_expr(1);
-//        self.restrictions = save_res;
-//
-//        expr
-        unimplemented!()
+        let save_res = self.restrictions.clone();
+        self.restrictions.extend(res);
+        
+        let expr = self.parse_assoc_expr(1);
+        self.restrictions = save_res;
+        
+        expr
     }
 
     pub fn parse_expr(&mut self) -> Result<Ptr<Expr>> {
@@ -451,7 +449,8 @@ impl<'a> Parser<'a> {
             TokenKind::Keyword(Kw::Mut),
             TokenKind::Keyword(Kw::Struct),
             TokenKind::Keyword(Kw::Trait),
-            TokenKind::Keyword(Kw::Fn)
+            TokenKind::Keyword(Kw::Fn),
+            TokenKind::Keyword(Kw::Pub)
         ]) {
             let item = self.parse_item()?;
             let pos = item.as_ref().pos().clone();
@@ -465,75 +464,156 @@ impl<'a> Parser<'a> {
         }
         else {
             let expr = self.parse_expr()?;
+            let pos = expr.as_ref().pos().clone();
             // let following_semicolon = self.expr_following_semicolon(&expr);
             let next_semicolon = self.check(&TokenKind::Control(Ctrl::Semicolon));
             let kind = if next_semicolon {
-
                 self.advance();
+                StmtKind::SemiStmt(expr)
+            }else {
+                StmtKind::ExprStmt(expr)
+            };
 
-            }
+            Ok(Ptr::new(Stmt::new(kind, pos)))
         }
     }
 
     fn parse_pattern(&mut self) -> Result<Ptr<Pattern>> {
-        unimplemented!()
+        let (kind, pos)  = match self.token.kind().clone() {
+            TokenKind::Identifier(ref val) => {
+                let ident = self.parse_ident()?;       
+                let pos = ident.pos().clone();
+                (PatternKind::Identifier(ident), pos)
+            },
+            TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
+                println!("Parsering tuple pattern");
+                let mut pos = self.token.pos().clone();
+                self.advance();
+
+                let mut sub_patterns = Vec::new();
+                
+                let mut expect_following = false;
+                while !self.check(&TokenKind::Control(Ctrl::Paren(Orientation::Right))) {
+                    let sub_pattern = self.parse_pattern()?;
+
+                    expect_following = false;
+                    pos.span.extend_node(sub_pattern.as_ref());
+
+                    sub_patterns.push(sub_pattern);
+
+                    if self.check(&TokenKind::Control(Ctrl::Comma)) {
+                        pos.span.extend_to(&self.token);
+                        self.advance();
+                        expect_following = true;
+                    }
+                }
+
+                let end = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
+                pos.span.extend_to(&end);
+                
+                println!("Expected following {}", expect_following);
+                if expect_following {
+                    return Err(Error::ParseError); // expecting a pattern following comma
+                }
+                else {
+                    (PatternKind::Tuple(sub_patterns), pos)
+                }
+            }
+            _ => {
+                //
+                println!("Parse Error: {}", self.token.to_string());
+                return Err(Error::ParseError); // failed to find a valid pattern.
+            }
+        };
+
+        Ok(Ptr::new(Pattern::new(kind, pos)))
     }
 
     fn parse_mutability(&mut self) -> Result<Mutability> {
-        unimplemented!()
+        match self.token.kind().clone() {
+            TokenKind::Keyword(Kw::Mut) => {
+                self.advance();
+                Ok(Mutability::Mutable)
+            }
+            TokenKind::Keyword(Kw::Let) => {
+                self.advance();
+                Ok(Mutability::Immutable)
+            }
+            _ => {
+                Err(Error::ParseError)
+            }
+        }
     }
 
     fn parse_local_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
-        unimplemented!()
-//        let mut pos = self.token.as_ref().unwrap().pos().clone();
-//        let mutability = self.parse_mutability()?;
-//
-//        let pattern = self.parse_pattern()?;
-//
-//        pos.span.extend(pattern.pos().len());
-//
-//        let ty = if self.check(&TokenKind::Control(Ctrl::Colon)) {
-//            self.advance();
-//            Some(self.parse_typespec()?)
-//        }
-//        else {
-//            None
-//        };
-//
-//        let init = if self.check(&TokenKind::Operator(Op::Equal)) {
-//            self.advance();
-//            Some(self.parse_expr()?)
-//        }
-//        else {
-//            None
-//        };
-//
-//        let kind = match (ty, init) {
-//            (Some(ty), Some(exp)) => {
-//                pos.span.extend(ty.pos().len());
-//                pos.span.extend(exp.pos().len());
-//                ItemKind::Local(mutability, pattern, ty, exp)
-//            }
-//            (Some(ty), None) => {
-//                pos.span.extend(ty.pos().len());
-//                ItemKind::LocalTyped(mutability, pattern, ty)
-//            }
-//            (None, Some(exp)) => {
-//                pos.span.extend(exp.pos().len());
-//                ItemKind::LocalInit(mutability, pattern, exp)
-//            }
-//            (None, None) => {
-//                return Err(Error::InvalidLocalItem {
-//                    pos: self.token.as_ref().unwrap().pos().clone()
-//                });
-//            }
-//        };
-//
-//        Ok(Ptr::new(Item::new(vis, kind, pos)))
+        let mut pos = self.token.pos().clone();
+        let mutability = self.parse_mutability()?;
+
+        let pattern = self.parse_pattern()?;
+
+        pos.span.extend_node(pattern.as_ref());
+
+        let ty = if self.check(&TokenKind::Control(Ctrl::Colon)) {
+            self.advance();
+            Some(self.parse_typespec()?)
+        }
+        else {
+            None
+        };
+
+        let init = if self.check(&TokenKind::Operator(Op::Equal)) {
+            self.advance();
+            Some(self.parse_expr()?)
+        }
+        else {
+            None
+        };
+
+        let kind = match (ty, init) {
+            (Some(ty), Some(exp)) => {
+                pos.span.extend_node(ty.as_ref());
+                pos.span.extend_node(exp.as_ref());
+                ItemKind::Local(mutability, pattern, ty, exp)
+            }
+            (Some(ty), None) => {
+                pos.span.extend_node(ty.as_ref());
+                ItemKind::LocalTyped(mutability, pattern, ty)
+            }
+            (None, Some(exp)) => {
+                pos.span.extend_node(exp.as_ref());
+                ItemKind::LocalInit(mutability, pattern, exp)
+            }
+            (None, None) => {
+                println!("Parse Error");
+                return Err(Error::ParseError);
+            }
+        };
+
+        Ok(Ptr::new(Item::new(vis, kind, pos)))
     }
 
-    fn parse_item(&mut self) -> Result<Ptr<Item>> {
-        unimplemented!();
+    fn parse_visibility(&mut self) -> Visibility {
+        match self.token.kind().clone() {
+            TokenKind::Keyword(Kw::Pub) => {
+                self.advance();
+                Visibility::Public
+            },
+            _ => {
+                Visibility::Private
+            }
+        }
+    }
+
+    pub fn parse_item(&mut self) -> Result<Ptr<Item>> {
+        let vis = self.parse_visibility();
+
+        match self.token.kind().clone() {
+            TokenKind::Keyword(Kw::Let) |
+            TokenKind::Keyword(Kw::Mut) => self.parse_local_item(vis),
+            _ => {
+                unimplemented!()
+            }
+        }
     }
 
     fn parse_typespec(&mut self) -> Result<Ptr<TypeSpec>> {
