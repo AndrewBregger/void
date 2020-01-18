@@ -19,6 +19,7 @@ macro_rules! create_token {
     ($kind:expr, $start_column:expr, $start:expr, $stream:expr) => {{
         let pos = FilePos::new($stream.line, $start_column, $stream.file.clone());
         let span = Span::new($start, $stream.index);
+        println!("New Token Span: {}", span);
         Token::new($kind, Position::new(pos, span))
     }}
 }
@@ -36,7 +37,7 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn bump(&mut self) {
+    fn bump(&mut self) {
         if self.index < self.source.len() {
             self.index += 1;
             self.column += 1;
@@ -44,7 +45,7 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn check_for(&mut self, ch: char) -> bool {
+    fn check_for(&mut self, ch: char) -> bool {
         match self.it.clone().next() {
             Some(c) => c == ch,
             _ => false
@@ -54,7 +55,6 @@ impl<'a> TokenStream<'a> {
     fn parse_possible_ident(&mut self) -> Option<Token> {
         let start = self.index;
         let start_column = self.column;
-
         while self.it.clone().next().map_or(false, |e| e.is_alphanumeric() || e == '_') {
             self.bump();
         }
@@ -62,7 +62,6 @@ impl<'a> TokenStream<'a> {
         let end = self.index;
 
         let value = &self.source[start..end];
-
 
         let kind = TokenKind::get_ident_kind(value);
 

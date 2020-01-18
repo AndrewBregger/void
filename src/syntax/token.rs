@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 use std::string::ToString;
 use std::cmp::{PartialEq, Eq};
+use std::fmt::Display;
+
+use super::ast::AstNode;
 
 #[derive(Debug, Clone)]
 pub struct FilePos {
@@ -19,7 +22,7 @@ impl FilePos {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Span {
     start: usize,
     end: usize
@@ -33,14 +36,27 @@ impl Span {
         }
     }
 
-    pub fn extend(&mut self, diff: usize) {
-        self.end += diff;
+    /// extends the span to include 'token' and everything between.
+    pub fn extend_to(&mut self, token: &Token) {
+        self.end = token.pos.span.end;
+    }
+
+    pub fn extend_node(&mut self, node: &dyn AstNode) {
+        let pos = node.pos();
+        self.end = pos.span.end;
     }
 
     pub fn len(&self) -> usize {
         self.end - self.start
     }
 }
+
+impl Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({} - {})", self.start, self.end)
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Position {
@@ -66,6 +82,10 @@ impl Position {
 
     pub fn len(&self) -> usize {
         self.span.len()
+    }
+
+    pub fn extend(&mut self, pos: &Position) {
+        self.span.end = pos.span.end;
     }
 }
 
@@ -227,6 +247,7 @@ pub enum Kw {
     Struct,
     Let,
     Mut,
+    Pub,
 }
 
 impl Kw {
@@ -259,6 +280,7 @@ impl ToString for Kw {
             Kw::Struct => "struct",
             Kw::Let =>    "let",
             Kw::Mut =>    "mut",
+            Kw::Pub =>    "pub",
         }.to_string()
     }
 }
@@ -423,14 +445,33 @@ impl TokenKind {
             "for" => TokenKind::Keyword(Kw::For),
             "while" => TokenKind::Keyword(Kw::While),
             "loop" => TokenKind::Keyword(Kw::Loop),
-            "use" => TokenKind::Keyword(Kw::Use),
+//            "use" => TokenKind::Keyword(Kw::Use),
             "with" => TokenKind::Keyword(Kw::With),
-            "trait" => TokenKind::Keyword(Kw::Trait),
             "as" => TokenKind::Keyword(Kw::As),
             "and" => TokenKind::Keyword(Kw::And),
             "or" => TokenKind::Keyword(Kw::Or),
+            "use"    => TokenKind::Keyword(Kw::Use),
+            "fn"     => TokenKind::Keyword(Kw::Fn),
+            "struct" => TokenKind::Keyword(Kw::Struct),
+            "let"    => TokenKind::Keyword(Kw::Let),
+            "mut"    => TokenKind::Keyword(Kw::Mut),
+            "pub"    => TokenKind::Keyword(Kw::Pub),
+            "trait"  => TokenKind::Keyword(Kw::Trait),
             _ => TokenKind::Identifier(val.to_string()),
         }
+    }
+
+    pub fn list_to_str(kinds: &[TokenKind]) -> String {
+        let mut res = String::new();
+
+        let strings = kinds.iter().map(|kind| {
+            match kind {
+                TokenKind::Identifier(_) => "identifier".to_string(),
+                _ => kind.to_string(),
+            }
+        }).collect::<Vec<String>>();
+
+        strings.join(", ")
     }
 }
 
@@ -493,6 +534,10 @@ impl Token {
 
     pub fn is_assignment(&self) -> bool {
         self.kind.is_assignment()
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.check(TokenKind::Eof)
     }
 
 

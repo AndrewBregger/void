@@ -13,18 +13,16 @@ fn main() -> std::io::Result<()> {
     // let mut content = String::new();
     // file.read_to_string(&mut content);
 
-    let test_input = "x.y + 1.0.to_string";
-    // let tokens = TokenStream::new(test_input, PathBuf::new()).collect::<Vec<Token>>();
+    // let test_input = "x.y + 1.0.to_string + y.x(1, 2)";
+    let test_input = "{}";
+    // let test_input = "1.0";
+    // let test_input = "x";
 
-    // for token in &tokens {
-    //    println!("{:?}", token.to_string());
-    // }
-
-    let mut parser = Parser::new(test_input, PathBuf::new());
+    let mut parser = Parser::new(test_input, PathBuf::new()).ok().unwrap();
 
     match parser.parse_expr() {
         Ok(expr) => expr.render(0),
-        Err(err) => println!("{}", err),
+        Err(err) => println!("{:?}", err),
     }
 
     Ok(())

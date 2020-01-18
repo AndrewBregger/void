@@ -46,7 +46,7 @@ impl Ident {
 
 impl TreeRender for Ident {
     fn render(&self, idx: u32) {
-        println!("{}Ident: {}", indent(idx), self.val.as_str());
+        println!("{}Ident: {} {}", indent(idx), self.val.as_str(), self.pos.span);
     }
 }
 
@@ -63,6 +63,8 @@ pub enum ExprKind {
     Binary(Op, Ptr<Expr>, Ptr<Expr>),
 
     FunctionCall(Ptr<Expr>, Vec<Ptr<Expr>>),
+    /// the first element of .1 is the receiver
+    MethodCall(Ptr<Expr>, Vec<Ptr<Expr>>),
 
     Field(Ptr<Expr>, Ident),
 
@@ -99,37 +101,46 @@ impl TreeRender for Expr {
     fn render(&self, idx: u32) {
         match &self.kind {
             ExprKind::Name(name) => {
-                println!("{}Name: {}", indent(idx), name.value());
+                println!("{}Name: {} {}", indent(idx), name.value(), self.pos().span);
             },
             ExprKind::NameTyped(name, types) => {
-                println!("{}Typed Name: {}", indent(idx), name.value());
+                println!("{}Typed Name: {} {}", indent(idx), name.value(), self.pos().span);
                 for ty in types {
                     ty.render(idx + 1);
                 }
             },
             ExprKind::IntegerLiteral(value) => {
-                println!("{}Integer: {}", indent(idx), value);
+                println!("{}Integer: {} {}", indent(idx), value, self.pos().span);
             },
             ExprKind::FloatLiteral(value) => {
-                println!("{}Float: {}", indent(idx), value);
+                println!("{}Float: {} {}", indent(idx), value, self.pos().span);
             },
             ExprKind::StringLiteral(ref value) => {
-                println!("{}String: {}", indent(idx), value);
+                println!("{}String: {} {}", indent(idx), value, self.pos().span);
             },
             ExprKind::CharLiteral(ch) => {
-                println!("{}Char: {}", indent(idx), ch);
+                println!("{}Char: {} {}", indent(idx), ch, self.pos().span);
             },
             ExprKind::Unary(ref op, ref expr) => {
-                println!("{}Unary: {}", indent(idx), op.to_string());
+                println!("{}Unary: {} {}", indent(idx), op.to_string(), self.pos().span);
                 expr.render(idx + 1);
             },
             ExprKind::Binary(ref op, ref lhs, ref rhs) => {
-                println!("{}Binary: {}", indent(idx), op.to_string());
+                println!("{}Binary: {} {}", indent(idx), op.to_string(), self.pos().span);
                 lhs.render(idx + 1);
                 rhs.render(idx + 1);
             },
             ExprKind::FunctionCall(ref operand, ref actuals) => {
-                println!("{}Fn Call:", indent(idx));
+                println!("{}Fn Call {}:", indent(idx), self.pos().span);
+                operand.render(idx + 1);
+
+                println!("{}Actuals:", indent(idx + 1));
+                for actual in actuals {
+                    actual.render(idx + 1);
+                }
+            },
+            ExprKind::MethodCall(ref operand, ref actuals) => {
+                println!("{}Method Call {}:", indent(idx), self.pos().span);
                 operand.render(idx + 1);
 
                 println!("{}Actuals:", indent(idx + 1));
@@ -138,12 +149,12 @@ impl TreeRender for Expr {
                 }
             },
             ExprKind::Field(operand, field) => {
-                println!("{}Field:", indent(idx));
+                println!("{}Field {}:", indent(idx), self.pos().span);
                 operand.render(idx + 1);
                 field.render(idx + 1);
             },
             ExprKind::Block(stmts) => {
-                println!("{}Block:", indent(idx));
+                println!("{}Block {}:", indent(idx), self.pos().span);
                 for stmt in stmts {
                     stmt.render(idx + 1);
                 }
@@ -313,8 +324,8 @@ impl TreeRender for TypeParams {
 #[derive(Debug, Clone)]
 pub enum ParamKind {
     ParamInit(Ident, Ptr<Expr>),
-    ParamTyped(Ident, Ptr<Expr>),
-    Param(Ident, Ptr<Expr>, Ptr<Expr>),
+    ParamTyped(Ident, Ptr<TypeSpec>),
+    Param(Ident, Ptr<TypeSpec>, Ptr<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -363,13 +374,20 @@ impl TreeRender for Param {
 }
 
 #[derive(Debug, Clone)]
+pub enum Mutability {
+    Mutable,
+    Immutable,
+}
+
+
+#[derive(Debug, Clone)]
 pub enum ItemKind {
-    Function(Ident, TypeParams, Vec<Ptr<Param>>, Ptr<Expr>),
+    Function(Ident, TypeParams, Vec<Ptr<Param>>, Ptr<TypeSpec>, Ptr<Expr>),
     Struct(Ident, TypeParams, Vec<Ptr<Item>>),
     Trait(),
-    LocalInit(Ptr<Pattern>, Ptr<Expr>),
-    LocalTyped(Ptr<Pattern>, Ptr<Expr>),
-    Local(Ptr<Pattern>, Ptr<Expr>, Ptr<Expr>),
+    LocalInit(Mutability, Ptr<Pattern>, Ptr<Expr>),
+    LocalTyped(Mutability, Ptr<Pattern>, Ptr<TypeSpec>),
+    Local(Mutability, Ptr<Pattern>, Ptr<TypeSpec>, Ptr<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -409,13 +427,15 @@ impl AstNode for Item {
 impl TreeRender for Item {
     fn render(&self, idx: u32) {
         match &self.kind {
-            ItemKind::Function(name, tparams, params, expr) => {
+            ItemKind::Function(name, tparams, params, ret, expr) => {
                 println!("{}Function: {}", indent(idx), name.value());
                 tparams.render(idx + 1);
                 println!("{}Params:", indent(idx + 1));
                 for param in params {
                     param.render(idx + 1);
                 }
+                println!("{}Return:", indent(idx + 1));
+                ret.render(idx + 1);
                 println!("{}Body:", indent(idx + 1));
                 expr.render(idx + 1);
             }
@@ -427,15 +447,15 @@ impl TreeRender for Item {
                     field.render(idx + 1);
                 }
             }
-            ItemKind::LocalInit(pattern, init) => {
+            ItemKind::LocalInit(_mutability, pattern, init) => {
                 println!("{}Init Local:", indent(idx));
                 init.render(idx + 1);
             }
-            ItemKind::LocalTyped(pattern, types) => {
+            ItemKind::LocalTyped(_mutability, pattern, types) => {
                 println!("{}Typed Local:", indent(idx));
                 types.render(idx + 1);
             }
-            ItemKind::Local(pattern, types, init) => {
+            ItemKind::Local(_mutability, pattern, types, init) => {
                 println!("{}Local:", indent(idx));
                 types.render(idx + 1);
                 init.render(idx + 1);
@@ -444,3 +464,63 @@ impl TreeRender for Item {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum TypeSpecKind {
+    ExprType(Ptr<Expr>),
+    MutType(Ptr<TypeSpec>),
+    TupleType(Vec<Ptr<TypeSpec>>),
+    PtrType(Ptr<TypeSpec>),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeSpec {
+    kind: TypeSpecKind,
+    position: Position
+}
+
+impl TypeSpec {
+    pub fn new(kind: TypeSpecKind, position: Position) -> Self {
+        Self {
+            kind,
+            position
+        }
+    }
+
+    pub fn kind(&self) -> &TypeSpecKind {
+        &self.kind
+    }
+}
+
+impl AstNode for TypeSpec {
+    fn pos(&self) -> &Position {
+        &self.position
+    }
+}
+
+impl TreeRender for TypeSpec {
+    fn render(&self, idx: u32) {
+        match self.kind() {
+            TypeSpecKind::ExprType(ty) => {
+                println!("{}Expression Type:", indent(idx));
+                ty.render(idx + 1);
+            }
+//            TypeSpecKind::MutType(ty) => {
+//                println!("{}Mutable Type:", indent(idx));
+//                ty.render(idx + 1);
+//            }
+            TypeSpecKind::TupleType(types) => {
+                println!("{}Tuple Type:", indent(idx));
+                for ty in types {
+                    ty.render(idx + 1);
+                }
+            }
+            TypeSpecKind::PtrType(ty) => {
+                println!("{}Ptr Type:", indent(idx));
+                ty.render(idx + 1);
+            }
+            _ => {},
+        }
+    }
+}
+
