@@ -3,11 +3,11 @@ use snafu::{ensure, Backtrace, ErrorCompat, ResultExt, Snafu};
 use super::token::{Token, FilePos, Position, Span, TokenKind, Ctrl, Kw, Op, Orientation};
 use super::ast::*;
 use super::tokenstream::TokenStream;
+use super::Diagnostics;
 use std::iter::Iterator;
 use std::path::PathBuf;
 use std::cmp::{Eq, PartialEq};
 use std::collections::HashSet;
-use crate::syntax::token::Ctrl::Paren;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -18,13 +18,13 @@ pub enum Error {
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum Restriction {
+pub enum Restriction {
     TypeExprOnly,
     NoVisibility,
 }
 
 #[derive(Debug, Clone)]
-struct Restrictions {
+pub struct Restrictions {
     res: HashSet<Restriction>
 }
 
@@ -62,6 +62,7 @@ pub struct Parser<'a> {
     restrictions: Restrictions,
     index: usize,
     token: Token,
+    diagnostics: Diagnostics,
     peek: Option<Token>,
 }
 
@@ -80,6 +81,7 @@ impl<'a> Parser<'a> {
                 index: 0usize,
                 restrictions: Restrictions::default(),
                 token: token.unwrap(),
+                diagnostics: Diagnostics::new(),
                 peek
             })
         }
@@ -108,7 +110,7 @@ impl<'a> Parser<'a> {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     fn check_peek(&self, kind: TokenKind) -> bool {
@@ -123,6 +125,7 @@ impl<'a> Parser<'a> {
             Ok(token)
         }
         else {
+            self.diagnostics.syntax_error(format!("expecting {}, found {}", kind.to_string(), self.token.to_string()).as_str(), self.token.pos());
             Err(Error::ParseError)
         }
     }
@@ -183,7 +186,8 @@ impl<'a> Parser<'a> {
            pos.span.extend_to(&found);
 
            if expect_expression {
-               return Err(Error::ParseError);
+                self.diagnostics.syntax_error("expecting an expression following ','", self.token.pos());
+                return Err(Error::ParseError);
            }
            else {
                ExprKind::NameTyped(ident, types)
@@ -197,7 +201,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_bottom_expr(&mut self) -> Result<Ptr<Expr>> {
-        println!("parse_bottom_expr {}", self.token.to_string());
         let pos = self.token.pos().clone();
         let expr =
             match self.token.kind().clone() {
@@ -231,6 +234,7 @@ impl<'a> Parser<'a> {
                 },
                 // TokenKind::StringLiteral(val) => Expr::new(ExprKind::IntegerLiteral(val), token.pos().clone()),
                 _ => {
+                    self.diagnostics.syntax_error(format!("expecting expression, found {}", self.token.to_string()).as_str(), self.token.pos());
                     return Err(Error::ParseError);
                 }
             };
@@ -269,7 +273,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_ident(&mut self) -> Result<Ident> {
-        println!("ident: {}", self.token.to_string());
         match self.token.kind().clone() {
             TokenKind::Identifier(val) => {
                 let pos = self.token.pos().clone();
@@ -277,7 +280,8 @@ impl<'a> Parser<'a> {
                 Ok(Ident::new(val.as_str(), pos))
             }
             _ => {
-               Err(Error::ParseError)
+                self.diagnostics.syntax_error(format!("expecting an identifier, found {}", self.token.to_string()).as_str(), self.token.pos());
+                Err(Error::ParseError)
             }
         }
     }
@@ -287,9 +291,8 @@ impl<'a> Parser<'a> {
         let mut pos = operand.pos().clone();
         pos.span.extend_to(&period);
 
-        println!("period_suffix {}", self.token.to_string());
         match self.token.kind().clone() {
-            TokenKind::Identifier(_val) => {
+            TokenKind::Identifier(_) => {
                 let kind = if self.check_peek(TokenKind::Control(Ctrl::Paren(Orientation::Left))) ||
                              self.check_peek(TokenKind::Control(Ctrl::Brace(Orientation::Left))) {
                     let name = self.parse_name()?;
@@ -317,7 +320,9 @@ impl<'a> Parser<'a> {
                         ExprKind::MethodCall(name, actuals)
                     }
                     else {
-                        return Err(Error::ParseError);
+                        unreachable!();
+                        // self.diagnostics.syntax_error(format!("expecting an identifier, found {}", self.token.to_string()).as_str(), self.token.pos());
+                        // return Err(Error::ParseError);
                     }
                 }
                 else {
@@ -331,6 +336,7 @@ impl<'a> Parser<'a> {
                 Ok(Ptr::new(Expr::new(kind, pos)))
             }
             _ => {
+                self.diagnostics.syntax_error(format!("expecting an identifier, found {}", self.token.to_string()).as_str(), self.token.pos());
                 Err(Error::ParseError)
             }
         }
@@ -486,7 +492,6 @@ impl<'a> Parser<'a> {
                 (PatternKind::Identifier(ident), pos)
             },
             TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
-                println!("Parsering tuple pattern");
                 let mut pos = self.token.pos().clone();
                 self.advance();
 
@@ -511,8 +516,9 @@ impl<'a> Parser<'a> {
                 let end = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
                 pos.span.extend_to(&end);
                 
-                println!("Expected following {}", expect_following);
+                // println!("Expected following {}", expect_following);
                 if expect_following {
+                    self.diagnostics.syntax_error("expecting an pattern following ','", self.token.pos());
                     return Err(Error::ParseError); // expecting a pattern following comma
                 }
                 else {
@@ -521,7 +527,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 //
-                println!("Parse Error: {}", self.token.to_string());
+                self.diagnostics.syntax_error(format!("expecting identifier or '(', found {}", self.token.to_string()).as_str(), self.token.pos());
                 return Err(Error::ParseError); // failed to find a valid pattern.
             }
         };
@@ -540,6 +546,7 @@ impl<'a> Parser<'a> {
                 Ok(Mutability::Immutable)
             }
             _ => {
+                self.diagnostics.syntax_error(format!("expecting mutability keywork 'let' or 'mut', found {}", self.token.to_string()).as_str(), self.token.pos());
                 Err(Error::ParseError)
             }
         }
@@ -584,12 +591,20 @@ impl<'a> Parser<'a> {
                 ItemKind::LocalInit(mutability, pattern, exp)
             }
             (None, None) => {
-                println!("Parse Error");
+                self.diagnostics.syntax_error("variable must have either type specification or initializing expression", self.token.pos());
                 return Err(Error::ParseError);
             }
         };
 
         Ok(Ptr::new(Item::new(vis, kind, pos)))
+    }
+
+    fn parse_struct_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
+        unimplemented!();
+    }
+
+    fn parse_function_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
+        unimplemented!();
     }
 
     fn parse_visibility(&mut self) -> Visibility {
@@ -610,7 +625,10 @@ impl<'a> Parser<'a> {
         match self.token.kind().clone() {
             TokenKind::Keyword(Kw::Let) |
             TokenKind::Keyword(Kw::Mut) => self.parse_local_item(vis),
+            TokenKind::Keyword(Kw::Struct) => self.parse_struct_item(vis),
+            TokenKind::Keyword(Kw::Fn) => self.parse_function_item(vis),
             _ => {
+                println!("Unimplemented: {}", self.token.to_string());
                 unimplemented!()
             }
         }

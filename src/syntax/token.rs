@@ -24,8 +24,8 @@ impl FilePos {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
-    start: usize,
-    end: usize
+    pub start: usize,
+    pub end: usize
 }
 
 impl Span {
@@ -89,9 +89,16 @@ impl Position {
     }
 }
 
-impl ToString for Position {
-    fn to_string(&self) -> String {
-        format!("{}:{}:{}", self.line(), self.column(), self.file.source.display())
+// impl ToString for Position {
+//     fn to_string(&self) -> String {
+//         format!("{}:{}:{}", self.line(), self.column(), self.file.source.display())
+//     }
+// }
+
+impl Display for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{}:{}:{}", self.line(), self.column(), self.file.source.display())?;
+        Ok(())
     }
 }
 
