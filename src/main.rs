@@ -14,7 +14,7 @@ fn main() -> std::io::Result<()> {
     // file.read_to_string(&mut content);
 
     // let test_input = "x.y + 1.0.to_string + y.x(1, 2)";
-    let test_input = "{ let (x, y) = 1.0; }";
+    let test_input = "{ let x : f32 = 1.0; }";
     // let test_input = "1.0";
     // let test_input = "x";
 

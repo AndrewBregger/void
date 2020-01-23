@@ -19,7 +19,7 @@ macro_rules! create_token {
     ($kind:expr, $start_column:expr, $start:expr, $stream:expr) => {{
         let pos = FilePos::new($stream.line, $start_column, $stream.file.clone());
         let span = Span::new($start, $stream.index);
-        println!("New Token Span: {}", span);
+        // println!("New Token Span: {}", span);
         Token::new($kind, Position::new(pos, span))
     }}
 }
@@ -302,6 +302,11 @@ impl<'a> TokenStream<'a> {
             ':' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Colon);
+                Some(create_token!(kind, start_column, start, self))
+            },
+            ';' => {
+                self.bump();
+                let kind = TokenKind::Control(Ctrl::Semicolon);
                 Some(create_token!(kind, start_column, start, self))
             },
             '|' => {

@@ -104,6 +104,18 @@ impl<'a> Parser<'a> {
         self.check_current(|token| token.check(kind.clone()))
     }
 
+    fn check_keyword(&self, kw: Kw) -> bool {
+        self.check(&TokenKind::Keyword(kw))
+    }
+
+    fn check_control(&self, ctrl: Ctrl) -> bool {
+        self.check(&TokenKind::Control(ctrl))
+    }
+
+    fn check_comma(&self) -> bool {
+        self.check_control(Ctrl::Comma)
+    }
+
     fn check_one_of(&self, kinds: Vec<TokenKind>) -> bool {
         for kind in &kinds {
             if self.check(kind) {
@@ -125,7 +137,7 @@ impl<'a> Parser<'a> {
             Ok(token)
         }
         else {
-            self.diagnostics.syntax_error(format!("expecting {}, found {}", kind.to_string(), self.token.to_string()).as_str(), self.token.pos());
+            self.diagnostics.syntax_error(format!("expecting '{}', found '{}'", kind.to_string(), self.token.to_string()).as_str(), self.token.pos());
             Err(Error::ParseError)
         }
     }
@@ -212,7 +224,10 @@ impl<'a> Parser<'a> {
                     Ptr::new(Expr::new(ExprKind::IntegerLiteral(val), pos))
                 },
                 TokenKind::FloatLiteral(val)   => {
+                    // println!("Before advance: {} {:?}", self.token.to_string(), self.peek);
                     self.advance();
+                    // println!("After advance: {} {:?}", self.token.to_string(), self.peek);
+
                     Ptr::new(Expr::new(ExprKind::FloatLiteral(val), pos))
                 },
                 TokenKind::StringLiteral(val)  => {
@@ -391,7 +406,7 @@ impl<'a> Parser<'a> {
     fn parse_assoc_expr(&mut self, prec_min: usize) -> Result<Ptr<Expr>> {
        let mut expr = self.parse_unary_expr()?;
 
-       println!("Parse Assoc: {}", self.token.to_string());
+    //    println!("Parse Assoc: {}", self.token.to_string());
 
        while self.check_current(|token| token.prec() >= prec_min) {
            // it known this is safe because Self::check_current would have returned
@@ -403,7 +418,7 @@ impl<'a> Parser<'a> {
                break;
            }
 
-           println!("Operator: {}", token.to_string());
+        //    println!("Operator: {}", token.to_string());
 
            self.advance();
 
@@ -635,7 +650,64 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_typespec(&mut self) -> Result<Ptr<TypeSpec>> {
-        unimplemented!();
+        let (kind, pos) = match self.token.kind().clone() {
+            TokenKind::Identifier(_) => {
+                let expr = self.parse_expr_with_res(Restrictions::default().with(Restriction::TypeExprOnly))?;
+                let pos = expr.pos().clone();
+                (TypeSpecKind::ExprType(expr), pos)
+            },
+            TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
+                let mut pos = self.token.pos().clone();
+                self.advance();
+                let mut subtypes = Vec::new();
+                let mut expect_following = false;
+                while !self.check_control(Ctrl::Paren(Orientation::Right)) {
+                    expect_following = false;
+                    let stype = self.parse_typespec()?;
+                    pos.span.extend_node(stype.as_ref());
+                    subtypes.push(stype);
+
+                    if self.check_comma() {
+                        pos.span.extend_to(&self.token);
+                        self.advance();
+                        expect_following = true;
+                    }
+                    else {
+                        break
+                    }
+                }
+
+                if expect_following {
+                    self.diagnostics.syntax_error("expecting type following ','", self.token.pos());
+                    return Err(Error::ParseError);
+                }
+                else {
+                    let token = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
+                    pos.span.extend_to(&token);
+                    (TypeSpecKind::TupleType(subtypes), pos)
+                }
+            }
+            TokenKind::Keyword(Kw::Mut) => {
+                let mut pos = self.token.pos().clone();
+                self.advance();
+                let ty = self.parse_typespec()?;
+                pos.span.extend_node(ty.as_ref());
+                (TypeSpecKind::MutType(ty), pos)
+            }
+            TokenKind::Operator(Op::Astrick) => {
+                let mut pos = self.token.pos().clone();
+                self.advance();
+                let ty = self.parse_typespec()?;
+                pos.span.extend_node(ty.as_ref());
+                (TypeSpecKind::PtrType(ty), pos)
+            }
+            _ => {
+                self.diagnostics.syntax_error(format!("expecting identifier, 'mut', '*', found {}", self.token.to_string()).as_str(), self.token.pos());
+                return Err(Error::ParseError);
+            }
+        };
+
+        Ok(Ptr::new(TypeSpec::new(kind, pos)))
     }
 
     fn expr_following_semicolon(&self, expr: &Ptr<Expr>) -> bool {
