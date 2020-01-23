@@ -274,28 +274,65 @@ impl TreeRender for Pattern {
 }
 
 #[derive(Debug, Clone)]
-pub enum TypeParamsKind {
+pub enum TypeParamKind {
     // When the type parameter doesn't have any
     Named(Ident),
-    BoundedNamed(Ident, Vec<Ptr<Expr>>)
+    BoundedNamed(Ident, Vec<Ptr<TypeSpec>>)
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeParams {
-    kind: TypeParamsKind,
+pub struct TypeParam {
+    kind: TypeParamKind,
     position: Position
 }
 
-impl TypeParams {
-    pub fn new(kind: TypeParamsKind, position: Position) -> Self {
+impl TypeParam {
+    pub fn new(kind: TypeParamKind, position: Position) -> Self {
         Self {
             kind,
             position
         }
     }
 
-    pub fn kind(&self) -> &TypeParamsKind {
+    pub fn kind(&self) -> &TypeParamKind {
         &self.kind
+    }
+}
+
+impl AstNode for TypeParam {
+    fn pos(&self) -> &Position {
+        &self.position
+    }
+}
+
+impl TreeRender for TypeParam {
+    fn render(&self, idx: u32) {
+        match self.kind() {
+            TypeParamKind::Named(name) => {
+                println!("{}Named: {}", indent(idx), name.value());
+            },
+            TypeParamKind::BoundedNamed(name, bounds) => {
+                println!("{}Bounded Named: {}", indent(idx), name.value());
+                for bound in bounds {
+                    bound.render(idx + 1);
+                }
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeParams {
+    types: Vec<TypeParam>,
+    position: Position
+}
+
+impl TypeParams {
+    pub fn new(types: Vec<TypeParam>, position: Position) -> Self {
+        Self {
+            types,
+            position
+        }
     }
 }
 
@@ -307,16 +344,9 @@ impl AstNode for TypeParams {
 
 impl TreeRender for TypeParams {
     fn render(&self, idx: u32) {
-        match self.kind() {
-            TypeParamsKind::Named(name) => {
-                println!("{}Named: {}", indent(idx), name.value());
-            },
-            TypeParamsKind::BoundedNamed(name, bounds) => {
-                println!("{}Bounded Named: {}", indent(idx), name.value());
-                for bound in bounds {
-                    bound.render(idx + 1);
-                }
-            },
+        println!("{}Type Parameters: {}", indent(idx), self.pos().span);
+        for ty in &self.types {
+            ty.render(idx + 1);
         }
     }
 }
@@ -383,8 +413,8 @@ pub enum Mutability {
 
 #[derive(Debug, Clone)]
 pub enum ItemKind {
-    Function(Ident, TypeParams, Vec<Ptr<Param>>, Ptr<TypeSpec>, Ptr<Expr>),
-    Struct(Ident, TypeParams, Vec<Ptr<Item>>),
+    Function(Ident, Option<TypeParams>, Vec<Ptr<Param>>, Ptr<TypeSpec>, Ptr<Expr>),
+    Struct(Ident, Option<TypeParams>, Vec<Ptr<Item>>),
     Trait(),
     LocalInit(Mutability, Ptr<Pattern>, Ptr<Expr>),
     LocalTyped(Mutability, Ptr<Pattern>, Ptr<TypeSpec>),
@@ -430,7 +460,7 @@ impl TreeRender for Item {
         match &self.kind {
             ItemKind::Function(name, tparams, params, ret, expr) => {
                 println!("{}Function: {} {}", indent(idx), name.value(),self.pos().span);
-                tparams.render(idx + 1);
+                tparams.as_ref().map(|param| param.render(idx + 1));
                 println!("{}Params:", indent(idx + 1));
                 for param in params {
                     param.render(idx + 1);
@@ -442,7 +472,7 @@ impl TreeRender for Item {
             }
             ItemKind::Struct(name, tparams, fields) => {
                 println!("{}Structure: {} {}", indent(idx), name.value(), self.pos().span);
-                tparams.render(idx + 1);
+                tparams.as_ref().map(|param| param.render(idx + 1));
                 println!("{}Fields:", indent(idx + 1));
                 for field in fields {
                     field.render(idx + 1);

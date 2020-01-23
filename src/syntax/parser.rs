@@ -129,6 +129,15 @@ impl<'a> Parser<'a> {
         self.peek.as_ref().map_or(false, |token| token.check(kind))
     }
 
+    fn allow(&mut self, kind: TokenKind) -> bool {
+        if self.check(&kind) {
+            self.advance();
+            true
+        }
+        else {
+            false
+        }
+    }
 
     fn expect(&mut self, kind: TokenKind) -> Result<Token> {
         if self.check(&kind) {
@@ -224,10 +233,7 @@ impl<'a> Parser<'a> {
                     Ptr::new(Expr::new(ExprKind::IntegerLiteral(val), pos))
                 },
                 TokenKind::FloatLiteral(val)   => {
-                    // println!("Before advance: {} {:?}", self.token.to_string(), self.peek);
                     self.advance();
-                    // println!("After advance: {} {:?}", self.token.to_string(), self.peek);
-
                     Ptr::new(Expr::new(ExprKind::FloatLiteral(val), pos))
                 },
                 TokenKind::StringLiteral(val)  => {
@@ -614,7 +620,85 @@ impl<'a> Parser<'a> {
         Ok(Ptr::new(Item::new(vis, kind, pos)))
     }
 
+    fn parse_typeparam(&mut self) -> Result<TypeParam> {
+        let name = self.parse_ident()?;
+        let mut pos = name.pos().clone();
+
+        let (kind, pos) = if self.allow(TokenKind::Control(Ctrl::Colon)) {
+            let mut types = Vec::new();
+            loop {
+                let ty = self.parse_typespec()?;
+                pos.span.extend_node(ty.as_ref());
+
+                types.push(ty);
+
+                if !self.allow(TokenKind::Operator(Op::Plus)) {
+                    break;
+                }
+            }
+
+            (TypeParamKind::BoundedNamed(name, types), pos)
+        }
+        else {
+            (TypeParamKind::Named(name), pos)
+        };
+
+        Ok(TypeParam::new(kind, pos))
+    }
+
+    pub fn parse_typeparams(&mut self) -> Result<TypeParams> {
+        let start = self.expect(TokenKind::Control(Ctrl::Brace(Orientation::Left)))?;
+        let mut pos = start.pos().clone();
+        let mut params = Vec::new();
+
+        let mut expecting_type = false;
+        while !self.check_control(Ctrl::Brace(Orientation::Right)) {
+            expecting_type = false;
+            let param = self.parse_typeparam()?;
+            pos.span.extend_node(&param);
+            params.push(param);
+
+            if self.allow(TokenKind::Control(Ctrl::Comma)) {
+                expecting_type = true;
+            }
+            else {
+                break;
+            }
+        }
+
+        if expecting_type {
+            self.diagnostics.syntax_error("expecting type specification following ','", self.token.pos());
+            return Err(Error::ParseError);
+        }
+
+        let end = self.expect(TokenKind::Control(Ctrl::Brace(Orientation::Right)))?;
+        pos.span.extend_to(&end);
+
+        Ok(TypeParams::new(params, pos))
+    }
+
+    fn try_parse_typeparams(&mut self) -> Result<Option<TypeParams>> {
+        if self.check_control(Ctrl::Brace(Orientation::Left)) {
+            Ok(Some(self.parse_typeparams()?))
+        }
+        else {
+            Ok(None)
+        }
+    }
+
     fn parse_struct_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
+        let start = self.expect(TokenKind::Keyword(Kw::Struct))?;
+        let mut pos = start.pos().clone();
+        let name = self.parse_ident()?;
+
+        let type_params = self.try_parse_typeparams()?;
+        if type_params.is_some() {
+            let params = type_params.as_ref().unwrap();
+            pos.span.extend_node(params);
+        }
+
+        // parse body of the struct
+
         unimplemented!();
     }
 
