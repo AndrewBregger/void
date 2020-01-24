@@ -410,11 +410,67 @@ pub enum Mutability {
     Immutable,
 }
 
+#[derive(Debug, Clone)]
+pub enum FieldKind {
+    MemberInit(Ident, Ptr<Expr>),
+    MemberTyped(Ident, Ptr<TypeSpec>),
+    Member(Ident, Ptr<TypeSpec>, Ptr<Expr>),
+}
+#[derive(Debug, Clone)]
+pub struct Field {
+    vis: Visibility,
+    kind: FieldKind,
+    position: Position,
+}
+
+impl Field {
+    pub fn new(vis: Visibility, kind: FieldKind, position: Position) -> Self {
+        Self {
+            vis,
+            kind,
+            position
+        }
+    }
+
+    pub fn kind(&self) -> &FieldKind {
+        &self.kind
+    }
+}
+
+impl AstNode for Field {
+    fn pos(&self) -> &Position {
+        &self.position
+    }
+}
+
+impl TreeRender for Field {
+    fn render(&self, idx: u32) {
+        match &self.kind {
+            FieldKind::MemberInit(name, init) => {
+                println!("{}Member Local: {}", indent(idx), self.pos().span);
+                name.render(idx + 1);
+                init.render(idx + 1);
+            }
+            FieldKind::MemberTyped(name, types) => {
+                println!("{}Member Local: {}", indent(idx), self.pos().span);
+                name.render(idx + 1);
+                types.render(idx + 1);
+            }
+            FieldKind::Member(name, types, init) => {
+                println!("{}Member: {}", indent(idx), self.pos().span);
+                name.render(idx + 1);
+                types.render(idx + 1);
+                init.render(idx + 1);
+            }
+            _ => {}
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ItemKind {
     Function(Ident, Option<TypeParams>, Vec<Ptr<Param>>, Ptr<TypeSpec>, Ptr<Expr>),
-    Struct(Ident, Option<TypeParams>, Vec<Ptr<Item>>),
+    Struct(Ident, Option<TypeParams>, Vec<Ptr<Field>>),
     Trait(),
     LocalInit(Mutability, Ptr<Pattern>, Ptr<Expr>),
     LocalTyped(Mutability, Ptr<Pattern>, Ptr<TypeSpec>),
@@ -460,6 +516,7 @@ impl TreeRender for Item {
         match &self.kind {
             ItemKind::Function(name, tparams, params, ret, expr) => {
                 println!("{}Function: {} {}", indent(idx), name.value(),self.pos().span);
+                name.render(idx + 1);
                 tparams.as_ref().map(|param| param.render(idx + 1));
                 println!("{}Params:", indent(idx + 1));
                 for param in params {
@@ -472,6 +529,7 @@ impl TreeRender for Item {
             }
             ItemKind::Struct(name, tparams, fields) => {
                 println!("{}Structure: {} {}", indent(idx), name.value(), self.pos().span);
+                name.render(idx + 1);
                 tparams.as_ref().map(|param| param.render(idx + 1));
                 println!("{}Fields:", indent(idx + 1));
                 for field in fields {

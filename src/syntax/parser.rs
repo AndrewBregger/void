@@ -8,6 +8,7 @@ use std::iter::Iterator;
 use std::path::PathBuf;
 use std::cmp::{Eq, PartialEq};
 use std::collections::HashSet;
+use crate::syntax::token::Kw::Or;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -686,6 +687,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_field(&mut self) -> Result<Ptr<Field>> {
+        let mut pos = self.token.pos().clone();
+        let vis = self.parse_visibility();
+        let name = self.parse_ident()?;
+
+
+        let ty = if self.check(&TokenKind::Control(Ctrl::Colon)) {
+            self.advance();
+            Some(self.parse_typespec()?)
+        }
+        else {
+            None
+        };
+
+        let init = if self.check(&TokenKind::Operator(Op::Equal)) {
+            self.advance();
+            Some(self.parse_expr()?)
+        }
+        else {
+            None
+        };
+
+        let kind = match (ty, init) {
+            (Some(ty), Some(exp)) => {
+                pos.span.extend_node(ty.as_ref());
+                pos.span.extend_node(exp.as_ref());
+                FieldKind::Member(name, ty, exp)
+            }
+            (Some(ty), None) => {
+                pos.span.extend_node(ty.as_ref());
+                FieldKind::MemberTyped(name, ty)
+            }
+            (None, Some(exp)) => {
+                pos.span.extend_node(exp.as_ref());
+                FieldKind::MemberInit(name, exp)
+            }
+            (None, None) => {
+                self.diagnostics.syntax_error("variable must have either type specification or initializing expression", self.token.pos());
+                return Err(Error::ParseError);
+            }
+        };
+
+        Ok(Ptr::new(Field::new(vis, kind, pos)))
+    }
+
     fn parse_struct_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
         let start = self.expect(TokenKind::Keyword(Kw::Struct))?;
         let mut pos = start.pos().clone();
@@ -698,8 +744,22 @@ impl<'a> Parser<'a> {
         }
 
         // parse body of the struct
+        self.expect(TokenKind::Control(Ctrl::Bracket(Orientation::Left)))?;
+        let mut fields = Vec::new();
+        while !self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Right))) {
+            let field = self.parse_field()?;
+            pos.span.extend_node(field.as_ref());
+            fields.push(field);
 
-        unimplemented!();
+            if !self.allow(TokenKind::Control(Ctrl::Comma)) {
+                break;
+            }
+        }
+
+        let end = self.expect(TokenKind::Control(Ctrl::Bracket(Orientation::Right)))?;
+        pos.span.extend_to(&end);
+
+        Ok(Ptr::new(Item::new(vis, ItemKind::Struct(name, type_params, fields), pos)))
     }
 
     fn parse_function_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
