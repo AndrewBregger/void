@@ -226,7 +226,16 @@ impl<'a> TokenStream<'a> {
             },
             '/' => {
                 self.bump();
-                let kind = if self.check_for('=') {
+
+                let kind = if self.check_for('/')  {
+                    // comment
+                    while !self.check_for('\n') {
+                        self.bump();
+                    }
+
+                    return self.next()
+                }
+                else if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::BackslashEqual)
                 }

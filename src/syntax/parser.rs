@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::cmp::{Eq, PartialEq};
 use std::collections::HashSet;
 use crate::syntax::token::Kw::Or;
+use crate::syntax::ast::Mutability::Mutable;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -459,10 +460,10 @@ impl<'a> Parser<'a> {
     pub fn parse_expr_with_res(&mut self, res: Restrictions) -> Result<Ptr<Expr>> {
         let save_res = self.restrictions.clone();
         self.restrictions.extend(res);
-        
+
         let expr = self.parse_assoc_expr(1);
         self.restrictions = save_res;
-        
+
         expr
     }
 
@@ -509,7 +510,7 @@ impl<'a> Parser<'a> {
     fn parse_pattern(&mut self) -> Result<Ptr<Pattern>> {
         let (kind, pos)  = match self.token.kind().clone() {
             TokenKind::Identifier(ref val) => {
-                let ident = self.parse_ident()?;       
+                let ident = self.parse_ident()?;
                 let pos = ident.pos().clone();
                 (PatternKind::Identifier(ident), pos)
             },
@@ -518,7 +519,7 @@ impl<'a> Parser<'a> {
                 self.advance();
 
                 let mut sub_patterns = Vec::new();
-                
+
                 let mut expect_following = false;
                 while !self.check(&TokenKind::Control(Ctrl::Paren(Orientation::Right))) {
                     let sub_pattern = self.parse_pattern()?;
@@ -537,7 +538,7 @@ impl<'a> Parser<'a> {
 
                 let end = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
                 pos.span.extend_to(&end);
-                
+
                 // println!("Expected following {}", expect_following);
                 if expect_following {
                     self.diagnostics.syntax_error("expecting an pattern following ','", self.token.pos());
@@ -577,21 +578,17 @@ impl<'a> Parser<'a> {
     fn parse_local_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
         let mut pos = self.token.pos().clone();
         let mutability = self.parse_mutability()?;
-
         let pattern = self.parse_pattern()?;
-
         pos.span.extend_node(pattern.as_ref());
 
-        let ty = if self.check(&TokenKind::Control(Ctrl::Colon)) {
-            self.advance();
+        let ty = if self.allow(TokenKind::Control(Ctrl::Colon)) {
             Some(self.parse_typespec()?)
         }
         else {
             None
         };
 
-        let init = if self.check(&TokenKind::Operator(Op::Equal)) {
-            self.advance();
+        let init = if self.allow(TokenKind::Operator(Op::Equal)) {
             Some(self.parse_expr()?)
         }
         else {
@@ -692,17 +689,14 @@ impl<'a> Parser<'a> {
         let vis = self.parse_visibility();
         let name = self.parse_ident()?;
 
-
-        let ty = if self.check(&TokenKind::Control(Ctrl::Colon)) {
-            self.advance();
+        let ty = if self.allow(TokenKind::Control(Ctrl::Colon)) {
             Some(self.parse_typespec()?)
         }
         else {
             None
         };
 
-        let init = if self.check(&TokenKind::Operator(Op::Equal)) {
-            self.advance();
+        let init = if self.allow(TokenKind::Operator(Op::Equal)) {
             Some(self.parse_expr()?)
         }
         else {
@@ -762,8 +756,114 @@ impl<'a> Parser<'a> {
         Ok(Ptr::new(Item::new(vis, ItemKind::Struct(name, type_params, fields), pos)))
     }
 
+    fn parse_parameter(&mut self) -> Result<Ptr<Param>> {
+        let mut pos = self.token.pos().clone();
+        let mutability = if self.allow(TokenKind::Keyword(Kw::Mut)) {
+            Mutability::Mutable
+        }
+        else {
+            Mutability::Immutable
+        };
+
+        let name = self.parse_ident()?;
+
+        let ty = if self.allow(TokenKind::Control(Ctrl::Colon)) {
+            Some(self.parse_typespec()?)
+        }
+        else {
+            None
+        };
+
+        let init = if self.allow(TokenKind::Operator(Op::Equal)) {
+            Some(self.parse_expr()?)
+        }
+        else {
+            None
+        };
+
+        let kind = match (ty, init) {
+            (Some(ty), Some(exp)) => {
+                pos.span.extend_node(ty.as_ref());
+                pos.span.extend_node(exp.as_ref());
+                ParamKind::Param(name, ty, exp)
+            }
+            (Some(ty), None) => {
+                pos.span.extend_node(ty.as_ref());
+                ParamKind::ParamTyped(name, ty)
+            }
+            (None, Some(exp)) => {
+                pos.span.extend_node(exp.as_ref());
+                ParamKind::ParamInit(name, exp)
+            }
+            (None, None) => {
+                self.diagnostics.syntax_error("parameter must have either type specification or initializing expression", self.token.pos());
+                return Err(Error::ParseError);
+            }
+        };
+
+        Ok(Ptr::new(Param::new(mutability, kind, pos)))
+    }
+
+    fn parse_parameters(&mut self) -> Result<Vec<Ptr<Param>>> {
+        let mut pos = self.token.pos().clone();
+        let start = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Left)))?;
+        let mut params = Vec::new();
+        let mut expect_param = false;
+        while !self.check(&TokenKind::Control(Ctrl::Paren(Orientation::Right))) {
+            expect_param = false;
+            let param = self.parse_parameter()?;
+            pos.span.extend_node(param.as_ref());
+            params.push(param);
+
+            if !self.allow(TokenKind::Control(Ctrl::Comma)) {
+                break;
+            }
+            else {
+                expect_param = true;
+            }
+        }
+
+        if expect_param {
+            self.diagnostics.syntax_error("expecting parameter following ','", self.token.pos());
+            Err(Error::ParseError)
+        }
+        else {
+            let end = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
+            pos.span.extend_to(&end);
+            Ok(params)
+        }
+    }
+
     fn parse_function_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
-        unimplemented!();
+        let start = self.expect(TokenKind::Keyword(Kw::Fn))?;
+        let mut pos = start.pos().clone();
+        let name = self.parse_ident()?;
+        let type_params = self.try_parse_typeparams()?;
+        let params = self.parse_parameters()?;
+        let ret = if !self.check_one_of(vec![TokenKind::Control(Ctrl::Bracket(Orientation::Left)),
+                                             TokenKind::Operator(Op::Equal)]) {
+            self.parse_typespec()?
+        }
+        else {
+            Ptr::new(TypeSpec::new_unit_type(self.token.pos()))
+        };
+
+        let body = if self.allow(TokenKind::Operator(Op::Equal)) {
+            self.parse_expr()?
+        }
+        else {
+            if self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Left))) {
+                self.parse_expr()?
+            }
+            else {
+                self.diagnostics.syntax_error("expecting '=' or '{' to define function body", self.token.pos());
+                return Err(Error::ParseError);
+            }
+        };
+        pos.span.extend_node(body.as_ref());
+
+        let kind = ItemKind::Function(name, type_params, params, ret, body);
+        Ok(Ptr::new(Item::new(vis, kind, pos)))
     }
 
     fn parse_visibility(&mut self) -> Visibility {

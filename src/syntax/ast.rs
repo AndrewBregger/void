@@ -1,5 +1,5 @@
-use super::token::{TokenKind, FilePos, Position, Span, Op};
-use std::rc::Rc;
+use super::token::{Position, Op};
+use std::string::ToString;
 
 pub type Ptr<T> = Box<T>;
 
@@ -20,6 +20,39 @@ fn indent(idt: u32) -> String {
 
     value
 }
+
+#[derive(Debug, Clone)]
+pub enum Mutability {
+    Mutable,
+    Immutable,
+}
+
+impl ToString for Mutability {
+    fn to_string(&self) -> String {
+        match self {
+            Mutability::Mutable => "mutable",
+            Mutability::Immutable => "immutable",
+        }.to_string()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Visibility {
+    Public,
+    Private,
+    Module,
+}
+
+impl ToString for Visibility {
+    fn to_string(&self) -> String {
+        match self {
+            Visibility::Public => "public",
+            Visibility::Private => "private",
+            Visibility::Module => "module",
+        }.to_string()
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Ident {
@@ -360,13 +393,15 @@ pub enum ParamKind {
 
 #[derive(Debug, Clone)]
 pub struct Param {
+    mutability: Mutability,
     kind: ParamKind,
     position: Position,
 }
 
 impl Param {
-    pub fn new(kind: ParamKind, position: Position) -> Self {
+    pub fn new(mutability: Mutability, kind: ParamKind, position: Position) -> Self {
         Self {
+            mutability,
             kind,
             position,
         }
@@ -404,11 +439,6 @@ impl TreeRender for Param {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Mutability {
-    Mutable,
-    Immutable,
-}
 
 #[derive(Debug, Clone)]
 pub enum FieldKind {
@@ -478,13 +508,6 @@ pub enum ItemKind {
 }
 
 #[derive(Debug, Clone)]
-pub enum Visibility {
-    Public,
-    Private,
-    Module,
-}
-
-#[derive(Debug, Clone)]
 pub struct Item {
     vis: Visibility,
     kind: ItemKind,
@@ -516,6 +539,7 @@ impl TreeRender for Item {
         match &self.kind {
             ItemKind::Function(name, tparams, params, ret, expr) => {
                 println!("{}Function: {} {}", indent(idx), name.value(),self.pos().span);
+                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
                 name.render(idx + 1);
                 tparams.as_ref().map(|param| param.render(idx + 1));
                 println!("{}Params:", indent(idx + 1));
@@ -529,6 +553,7 @@ impl TreeRender for Item {
             }
             ItemKind::Struct(name, tparams, fields) => {
                 println!("{}Structure: {} {}", indent(idx), name.value(), self.pos().span);
+                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
                 name.render(idx + 1);
                 tparams.as_ref().map(|param| param.render(idx + 1));
                 println!("{}Fields:", indent(idx + 1));
@@ -538,16 +563,19 @@ impl TreeRender for Item {
             }
             ItemKind::LocalInit(_mutability, pattern, init) => {
                 println!("{}Init Local: {}", indent(idx), self.pos().span);
+                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
                 pattern.render(idx + 1);
                 init.render(idx + 1);
             }
             ItemKind::LocalTyped(_mutability, pattern, types) => {
                 println!("{}Typed Local: {}", indent(idx), self.pos().span);
+                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
                 pattern.render(idx + 1);
                 types.render(idx + 1);
             }
             ItemKind::Local(_mutability, pattern, types, init) => {
                 println!("{}Local: {}", indent(idx), self.pos().span);
+                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
                 types.render(idx + 1);
                 pattern.render(idx + 1);
                 init.render(idx + 1);
@@ -563,6 +591,7 @@ pub enum TypeSpecKind {
     MutType(Ptr<TypeSpec>),
     TupleType(Vec<Ptr<TypeSpec>>),
     PtrType(Ptr<TypeSpec>),
+    UnitType,
 }
 
 #[derive(Debug, Clone)]
@@ -581,6 +610,13 @@ impl TypeSpec {
 
     pub fn kind(&self) -> &TypeSpecKind {
         &self.kind
+    }
+
+    pub fn new_unit_type(pos: &Position) -> Self {
+        Self {
+            kind: TypeSpecKind::UnitType,
+            position: pos.clone()
+        }
     }
 }
 
@@ -615,4 +651,3 @@ impl TreeRender for TypeSpec {
         }
     }
 }
-
