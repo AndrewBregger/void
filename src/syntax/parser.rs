@@ -255,13 +255,78 @@ impl<'a> Parser<'a> {
                 TokenKind::Control(Ctrl::Bracket(Orientation::Left)) => {
                     self.parse_block_expr()?
                 },
-                // TokenKind::StringLiteral(val) => Expr::new(ExprKind::IntegerLiteral(val), token.pos().clone()),
+                TokenKind::Keyword(Kw::If) |
+                TokenKind::Keyword(Kw::While) |
+                TokenKind::Keyword(Kw::For) |
+                TokenKind::Keyword(Kw::Loop) => self.parse_branch_expr()?,
                 _ => {
                     self.diagnostics.syntax_error(format!("expecting expression, found {}", self.token.to_string()).as_str(), self.token.pos());
                     return Err(Error::ParseError);
                 }
             };
         Ok(expr)
+    }
+
+    fn parse_branch_expr(&mut self) -> Result<Ptr<Expr>> {
+        let tok = self.token.clone();
+        let mut pos = tok.pos().clone();
+        self.advance();
+
+        let kind = match tok.kind() {
+            TokenKind::Keyword(Kw::If) => {
+                // remove struct literal
+                let cond = self.parse_expr()?;
+
+                if !self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Left))) {
+                    self.diagnostics.syntax_error(format!("expecting '{{' found {}", self.token.to_string()).as_str(), self.token.pos());
+                    return Err(Error::ParseError);
+                }
+
+                let body = self.parse_expr()?;
+                pos.span.extend_node(body.as_ref());
+                ExprKind::If(cond, body)
+            },
+            TokenKind::Keyword(Kw::While) => {
+                let cond = self.parse_expr()?;
+
+                if !self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Left))) {
+                    self.diagnostics.syntax_error(format!("expecting '{{' found {}", self.token.to_string()).as_str(), self.token.pos());
+                    return Err(Error::ParseError);
+                }
+
+                let body = self.parse_expr()?;
+                pos.span.extend_node(body.as_ref());
+                ExprKind::While(cond, body)
+            },
+            TokenKind::Keyword(Kw::For) => {
+                let pattern = self.parse_pattern()?;
+                self.expect(TokenKind::Keyword(Kw::In))?;
+                let expr = self.parse_expr()?;
+
+
+                if !self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Left))) {
+                    self.diagnostics.syntax_error(format!("expecting '{{' found {}", self.token.to_string()).as_str(), self.token.pos());
+                    return Err(Error::ParseError);
+                }
+
+                let body = self.parse_expr()?;
+                pos.span.extend_node(body.as_ref());
+                ExprKind::For(pattern, expr, body)
+            },
+            TokenKind::Keyword(Kw::Loop) => {
+                if !self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Left))) {
+                    self.diagnostics.syntax_error(format!("expecting '{{' found {}", self.token.to_string()).as_str(), self.token.pos());
+                    return Err(Error::ParseError);
+                }
+
+                let body = self.parse_expr()?;
+                pos.span.extend_node(body.as_ref());
+                ExprKind::Loop(body)
+            },
+            _ => unreachable!(),
+        };
+
+        Ok(Ptr::new(Expr::new(kind, pos)))
     }
 
     fn parse_function_call(&mut self, operand: Ptr<Expr>) -> Result<Ptr<Expr>> {
@@ -340,6 +405,9 @@ impl<'a> Parser<'a> {
                                 break;
                             }
                         }
+                        let end = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
+                        pos.span.extend_to(&end);
+
                         ExprKind::MethodCall(name, actuals)
                     }
                     else {
@@ -539,7 +607,6 @@ impl<'a> Parser<'a> {
                 let end = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
                 pos.span.extend_to(&end);
 
-                // println!("Expected following {}", expect_following);
                 if expect_following {
                     self.diagnostics.syntax_error("expecting an pattern following ','", self.token.pos());
                     return Err(Error::ParseError); // expecting a pattern following comma

@@ -255,6 +255,7 @@ pub enum Kw {
     Let,
     Mut,
     Pub,
+    In,
 }
 
 impl Kw {
@@ -288,6 +289,7 @@ impl ToString for Kw {
             Kw::Let =>    "let",
             Kw::Mut =>    "mut",
             Kw::Pub =>    "pub",
+            Kw::In =>     "in",
         }.to_string()
     }
 }
@@ -466,6 +468,7 @@ impl TokenKind {
             "mut"    => TokenKind::Keyword(Kw::Mut),
             "pub"    => TokenKind::Keyword(Kw::Pub),
             "trait"  => TokenKind::Keyword(Kw::Trait),
+            "in"     => TokenKind::Keyword(Kw::In),
             _ => TokenKind::Identifier(val.to_string()),
         }
     }

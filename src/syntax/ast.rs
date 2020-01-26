@@ -91,17 +91,21 @@ pub enum ExprKind {
     FloatLiteral(f64),
     StringLiteral(String),
     CharLiteral(char),
-
     Unary(Op, Ptr<Expr>),
     Binary(Op, Ptr<Expr>, Ptr<Expr>),
-
     FunctionCall(Ptr<Expr>, Vec<Ptr<Expr>>),
     /// the first element of .1 is the receiver
     MethodCall(Ptr<Expr>, Vec<Ptr<Expr>>),
-
     Field(Ptr<Expr>, Ident),
-
     Block(Vec<Ptr<Stmt>>),
+
+    If(Ptr<Expr>, Ptr<Expr>),
+    While(Ptr<Expr>, Ptr<Expr>),
+    For(Ptr<Pattern>, Ptr<Expr>, Ptr<Expr>),
+    Loop(Ptr<Expr>),
+
+    // ListGenerator(),
+
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +195,26 @@ impl TreeRender for Expr {
                 for stmt in stmts {
                     stmt.render(idx + 1);
                 }
+            },
+            ExprKind::If(cond, body) => {
+                println!("{}If {}:", indent(idx), self.pos().span);
+                cond.render(idx + 1);
+                body.render(idx + 1);
+            },
+            ExprKind::While(cond, body) => {
+                println!("{}While {}:", indent(idx), self.pos().span);
+                cond.render(idx + 1);
+                body.render(idx + 1);
+            },
+            ExprKind::For(pattern, expr, body) => {
+                println!("{}For {}:", indent(idx), self.pos().span);
+                pattern.render(idx + 1);
+                expr.render(idx + 1);
+                body.render(idx + 1);
+            },
+            ExprKind::Loop(body) => {
+                println!("{}Loop {}:", indent(idx), self.pos().span);
+                body.render(idx + 1);
             },
         }
     }

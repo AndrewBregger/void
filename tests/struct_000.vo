@@ -1,0 +1,12 @@
+fn add(x: f32, y: f32) {
+    loop {
+        for x in y {
+            foo(x);
+            if boo {
+                x.z
+            }
+        }
+
+        mooooo(1, 2, 3)
+    }
+}
