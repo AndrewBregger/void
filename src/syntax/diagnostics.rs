@@ -56,7 +56,7 @@ impl Diagnostics {
         match &msg.loc {
             Some(loc) => {
                 println!("{} | {}: {}", loc, msg.sev.to_string(), msg.msg);
-                self.print_source_line(&loc);
+                // self.print_source_line(&loc);
             }
             None => {
                 println!("{}: {}", msg.sev.to_string(), msg.msg);

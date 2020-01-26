@@ -153,6 +153,21 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_file(&mut self) -> Result<Vec<Ptr<Item>>> {
+        let mut items = Vec::new();
+
+        while !self.check(&TokenKind::Eof) {
+            let item = self.parse_item()?;
+
+            if self.item_needs_semicolon(&item) {
+                self.expect(TokenKind::Control(Ctrl::Semicolon))?;
+            }
+
+            items.push(item);
+        }
+        Ok(items)
+    }
+
     fn parse_block_expr(&mut self) -> Result<Ptr<Expr>> {
        let mut pos = self.token.pos().clone();
        let open = self.expect(TokenKind::Control(Ctrl::Bracket(Orientation::Left)))?;
@@ -1029,7 +1044,12 @@ impl<'a> Parser<'a> {
 
     fn item_needs_semicolon(&self, item: &Ptr<Item>) -> bool {
         match item.as_ref().kind() {
-            _ => true,
+            ItemKind::LocalInit(..) |
+            ItemKind::LocalTyped(..) |
+            ItemKind::Local(..) => {
+                true
+            }
+            _ => false,
         }
     }
 }

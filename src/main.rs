@@ -19,8 +19,12 @@ fn main() -> std::io::Result<()> {
     let (content, path) = load_file("./tests/struct_000.vo")?;
 
     let mut parser = Parser::new(content.as_str(), path).ok().unwrap();
-    match parser.parse_item() {
-        Ok(node) => node.render(0),
+    match parser.parse_file() {
+        Ok(nodes) => {
+            for node in &nodes {
+                node.render(0);
+            }
+        },
         Err(err) => println!("{:?}", err),
     }
 
