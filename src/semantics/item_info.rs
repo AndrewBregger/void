@@ -5,6 +5,13 @@ use super::types::Type;
 use crate::syntax::ast::{Item, Ptr};
 
 #[derive(Debug, Clone)]
+pub enum ItemState {
+    Resolved,
+    Active,
+    Unresolved,
+}
+
+#[derive(Debug, Clone)]
 pub struct ItemInfo {
     // the item this info is for
     item: Ptr<Item>,
@@ -12,6 +19,7 @@ pub struct ItemInfo {
     resovled_type: Rc<Type>,
     // the scope of this entity
     scope: Option<Rc<Scope>>,
+    state: ItemState
 }
 
 impl ItemInfo {
@@ -24,6 +32,14 @@ impl ItemInfo {
             item,
             resovled_type,
             scope,
+            state: ItemState::Unresolved
+        }
+    }
+
+    pub fn resolve(self) -> Self {
+        Self {
+            state: ItemState::Resolved
+            ..self
         }
     }
 
