@@ -14,15 +14,12 @@ pub enum ScopeKind {
 }
 
 pub struct ScopeManager {
-    scopes: Vec<Scope>
+    scopes: Vec<Scope>,
 }
 
 impl ScopeManager {
     pub fn new() -> Self {
-
-        let mut manager = Self {
-            scopes: Vec::new()
-        };
+        let mut manager = Self { scopes: Vec::new() };
 
         let prelude = Scope::new(ScopeKind::Prelude);
         assert_eq!(prelude.id(), ScopeId(0));
@@ -56,15 +53,21 @@ impl ScopeManager {
         self.scopes.get_mut(id.0).unwrap()
     }
 
-    pub fn lookup_from<'scope, 'item>(&'scope self, mut scope: &'scope Scope, name: &String) -> Option<&'item ItemInfo>
-        where 'scope: 'item {
+    pub fn lookup_from<'scope, 'item>(
+        &'scope self,
+        mut scope: &'scope Scope,
+        name: &String,
+    ) -> Option<&'item ItemInfo>
+    where
+        'scope: 'item,
+    {
         loop {
             match scope.lookup(name) {
                 Some(item) => return Some(item),
                 None => match scope.parent {
                     Some(p) => scope = self.get_scope(p),
                     None => break,
-                }
+                },
             }
         }
         None
@@ -76,7 +79,7 @@ pub struct Scope {
     id: ScopeId,
     pub(crate) parent: Option<ScopeId>,
     env: HashMap<String, ItemInfo>,
-    pub(crate)  kind: ScopeKind,
+    pub(crate) kind: ScopeKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -86,7 +89,6 @@ impl ScopeId {
     pub fn next() -> Self {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static TOKEN: AtomicUsize = AtomicUsize::new(0);
-
 
         Self(TOKEN.fetch_add(1, Ordering::SeqCst))
     }

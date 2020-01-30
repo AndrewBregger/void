@@ -1,4 +1,4 @@
-use super::{token::{TokenKind, Token, Span, Position, FilePos, Op, Kw, Ctrl, Orientation}};
+use super::token::{Ctrl, FilePos, Kw, Op, Orientation, Position, Span, Token, TokenKind};
 use std::path::PathBuf;
 
 use std::iter::Iterator;
@@ -21,7 +21,7 @@ macro_rules! create_token {
         let span = Span::new($start, $stream.index);
         // println!("New Token Span: {}", span);
         Token::new($kind, Position::new(pos, span))
-    }}
+    }};
 }
 
 impl<'a> TokenStream<'a> {
@@ -52,14 +52,19 @@ impl<'a> TokenStream<'a> {
     fn check_for(&mut self, ch: char) -> bool {
         match self.it.clone().next() {
             Some(c) => c == ch,
-            _ => false
+            _ => false,
         }
     }
 
     fn parse_possible_ident(&mut self) -> Option<Token> {
         let start = self.index;
         let start_column = self.column;
-        while self.it.clone().next().map_or(false, |e| e.is_alphanumeric() || e == '_') {
+        while self
+            .it
+            .clone()
+            .next()
+            .map_or(false, |e| e.is_alphanumeric() || e == '_')
+        {
             self.bump();
         }
 
@@ -68,9 +73,8 @@ impl<'a> TokenStream<'a> {
         let value = &self.source[start..end];
 
         let kind = if value == "_" {
-           TokenKind::Control(Ctrl::Underscore)
-        }
-        else {
+            TokenKind::Control(Ctrl::Underscore)
+        } else {
             TokenKind::get_ident_kind(value)
         };
 
@@ -88,14 +92,16 @@ impl<'a> TokenStream<'a> {
         let mut is_float = false;
 
         if self.check_for('.') {
-
-            if self.it.clone().skip(1).next().map_or(false, |e|
-                e.is_numeric() || e == 'e' || e == 'E'
-            ) {
+            if self
+                .it
+                .clone()
+                .skip(1)
+                .next()
+                .map_or(false, |e| e.is_numeric() || e == 'e' || e == 'E')
+            {
                 is_float = true;
                 self.bump();
-            }
-            else {
+            } else {
                 let value = &self.source[start..self.index];
                 let value = value.parse::<u64>().unwrap();
                 let kind = TokenKind::new_integer(value);
@@ -128,8 +134,7 @@ impl<'a> TokenStream<'a> {
             let kind = TokenKind::new_float(value);
 
             Some(create_token!(kind, start_column, start, self))
-        }
-        else {
+        } else {
             let value = value.parse::<u64>().unwrap();
             let kind = TokenKind::new_integer(value);
 
@@ -147,13 +152,11 @@ impl<'a> TokenStream<'a> {
                     }
 
                     self.bump();
-                }
-                else {
+                } else {
                     break;
                 }
-            }
-            else {
-                break
+            } else {
+                break;
             }
         }
     }
@@ -177,244 +180,223 @@ impl<'a> TokenStream<'a> {
                 let token = Some(create_token!(kind, start_column, start, self));
                 self.bump();
                 token
-            },
+            }
             '+' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::PlusEqual)
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Plus)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '-' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::MinusEqual)
-                }
-                else if self.check_for('>') {
+                } else if self.check_for('>') {
                     self.bump();
                     TokenKind::Control(Ctrl::MinusGreater)
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Minus)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '*' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::AstrickEqual)
-                }
-                else if self.check_for('*') {
+                } else if self.check_for('*') {
                     self.bump();
 
                     if self.check_for('=') {
                         TokenKind::Operator(Op::AstrickAstrickEqual)
-                    }
-                    else {
+                    } else {
                         TokenKind::Operator(Op::AstrickAstrick)
                     }
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Astrick)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '/' => {
                 self.bump();
 
-                let kind = if self.check_for('/')  {
+                let kind = if self.check_for('/') {
                     // comment
                     while !self.check_for('\n') {
                         self.bump();
                     }
 
-                    return self.next()
-                }
-                else if self.check_for('=') {
+                    return self.next();
+                } else if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::BackslashEqual)
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Backslash)
                 };
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '%' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::ModulosEqual)
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Modulos)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '~' => {
                 self.bump();
 
                 let kind = TokenKind::Operator(Op::Tilde);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '{' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Bracket(Orientation::Left));
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
 
             '}' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Bracket(Orientation::Right));
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '(' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Paren(Orientation::Left));
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             ')' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Paren(Orientation::Right));
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '[' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Brace(Orientation::Left));
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             ']' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Brace(Orientation::Right));
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '?' => {
                 self.bump();
                 let kind = TokenKind::Operator(Op::Question);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             ',' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Comma);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '.' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Period);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             ':' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Colon);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             ';' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Semicolon);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '|' => {
                 self.bump();
                 let kind = TokenKind::Operator(Op::Pipe);
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '&' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     TokenKind::Operator(Op::AmpersandEqual)
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Ampersand)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '=' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::EqualEqual)
-                }
-                else if self.check_for('>') {
+                } else if self.check_for('>') {
                     self.bump();
                     TokenKind::Control(Ctrl::EqualLess)
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Equal)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '<' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::LessEqual)
-                }
-                else if self.check_for('-') {
+                } else if self.check_for('-') {
                     self.bump();
                     TokenKind::Control(Ctrl::LessMinus)
-                }
-                else if self.check_for('<') {
+                } else if self.check_for('<') {
                     self.bump();
 
                     if self.check_for('=') {
                         TokenKind::Operator(Op::LessLessEqual)
-                    }
-                    else {
+                    } else {
                         TokenKind::Operator(Op::LessLess)
                     }
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Less)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '>' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
                     TokenKind::Operator(Op::GreaterEqual)
-                }
-                else if self.check_for('>') {
+                } else if self.check_for('>') {
                     self.bump();
 
                     if self.check_for('=') {
                         TokenKind::Operator(Op::GreaterGreaterEqual)
-                    }
-                    else {
+                    } else {
                         TokenKind::Operator(Op::GreaterGreater)
                     }
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Greater)
                 };
 
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '!' => {
                 self.bump();
                 let kind = if self.check_for('=') {
                     self.bump();
 
                     TokenKind::Operator(Op::BangEqual)
-
-                }
-                else {
+                } else {
                     TokenKind::Operator(Op::Bang)
                 };
                 Some(create_token!(kind, start_column, start, self))
-            },
+            }
             '#' => {
                 self.bump();
                 let kind = TokenKind::Control(Ctrl::Hash);
@@ -425,8 +407,8 @@ impl<'a> TokenStream<'a> {
                 // }
                 // // this can ge modified to return the content of the comment
                 // self.next()
-            },
-            _ => None
+            }
+            _ => None,
         }
     }
 }
@@ -439,23 +421,19 @@ impl<'a> Iterator for TokenStream<'a> {
         if let Some(ch) = self.it.clone().next() {
             if ch.is_alphabetic() || ch == '_' {
                 self.parse_possible_ident()
-            }
-            else if ch.is_numeric() {
-               self.parse_number()
-            }
-            else {
+            } else if ch.is_numeric() {
+                self.parse_number()
+            } else {
                 self.parse_operator(ch)
             }
-        }
-        else {
+        } else {
             if !self.at_eof {
                 let file = FilePos::new(self.line, self.column, self.file.clone());
                 let span = Span::new(self.index, self.index);
                 let pos = Position::new(file, span);
                 self.at_eof = true;
                 Some(Token::new(TokenKind::Eof, pos))
-            }
-            else {
+            } else {
                 None
             }
         }

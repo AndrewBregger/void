@@ -7,8 +7,6 @@ pub struct CheckedFile {
 
 impl CheckedFile {
     pub fn new() -> Self {
-        Self {
-            items: Vec::new()
-        }
+        Self { items: Vec::new() }
     }
 }

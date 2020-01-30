@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use super::scope::Scope;
+use super::scope::{Scope, ScopeId};
 use super::types::Type;
 use crate::syntax::ast::{Item, Ptr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ItemState {
     Resolved,
     Active,
@@ -18,29 +18,41 @@ pub struct ItemInfo {
     // the type of this entity
     resovled_type: Rc<Type>,
     // the scope of this entity
-    scope: Option<Rc<Scope>>,
-    state: ItemState
+    scope: Option<ScopeId>,
+    // the current state of the item.
+    state: ItemState,
 }
 
 impl ItemInfo {
-    pub fn unresolved(item: Ptr<Item>) -> Self {
-        Self::new(item, Rc::new(Type::Unknown), None)
+    pub fn unresolved(item: Ptr<Item>, scope: Option<ScopeId>) -> Self {
+	Self {
+            item,
+            resovled_type: Rc::new(Type::Unknown),
+            scope,
+            state: ItemState::Unresolved,
+        }
     }
 
-    pub fn new(item: Ptr<Item>, resovled_type: Rc<Type>, scope: Option<Rc<Scope>>) -> Self {
+    pub fn resolved(item: Ptr<Item>, resovled_type: Rc<Type>, scope: Option<ScopeId>) -> Self {
         Self {
             item,
             resovled_type,
             scope,
-            state: ItemState::Unresolved
+            state: ItemState::Resolved,
         }
     }
+    
 
     pub fn resolve(self) -> Self {
-        Self {
-            state: ItemState::Resolved
-            ..self
+        if self.state == ItemState::Resolved {
+            self
         }
+        else {
+            Self {
+                state: ItemState::Resolved,
+                ..self
+            }
+	}
     }
 
     pub fn item_type(&self) -> &Rc<Type> {

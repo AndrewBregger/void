@@ -1,7 +1,7 @@
+use std::cmp::{Eq, PartialEq};
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::string::ToString;
-use std::cmp::{PartialEq, Eq};
-use std::fmt::Display;
 
 use super::ast::AstNode;
 
@@ -9,7 +9,7 @@ use super::ast::AstNode;
 pub struct FilePos {
     pub line: usize,
     pub column: usize,
-    pub source: PathBuf
+    pub source: PathBuf,
 }
 
 impl FilePos {
@@ -17,7 +17,7 @@ impl FilePos {
         Self {
             line,
             column,
-            source
+            source,
         }
     }
 }
@@ -25,15 +25,12 @@ impl FilePos {
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
     pub start: usize,
-    pub end: usize
+    pub end: usize,
 }
 
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
-        Self {
-            start,
-            end
-        }
+        Self { start, end }
     }
 
     /// extends the span to include 'token' and everything between.
@@ -57,20 +54,15 @@ impl Display for Span {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct Position {
     pub file: FilePos,
-    pub span: Span
+    pub span: Span,
 }
-
 
 impl Position {
     pub fn new(file: FilePos, span: Span) -> Self {
-        Self {
-            file,
-            span
-        }
+        Self { file, span }
     }
 
     pub fn line(&self) -> usize {
@@ -98,7 +90,13 @@ impl Position {
 
 impl Display for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{}:{}:{}", self.line(), self.column(), self.file.source.display())?;
+        write!(
+            f,
+            "{}:{}:{}",
+            self.line(),
+            self.column(),
+            self.file.source.display()
+        )?;
         Ok(())
     }
 }
@@ -150,24 +148,16 @@ pub enum Op {
 
     Dollar,
     Question,
-
 }
 
 impl Op {
     pub fn prec(&self) -> usize {
         match self {
             Op::AstrickAstrick => 14,
-            Op::Backslash |
-            Op::Astrick |
-            Op::Modulos => 13,
-            Op::Plus |
-            Op::Minus => 12,
-            Op::LessLess |
-            Op::GreaterGreater => 11,
-            Op::Less |
-            Op::Greater |
-            Op::EqualEqual |
-            Op::BangEqual => 10,
+            Op::Backslash | Op::Astrick | Op::Modulos => 13,
+            Op::Plus | Op::Minus => 12,
+            Op::LessLess | Op::GreaterGreater => 11,
+            Op::Less | Op::Greater | Op::EqualEqual | Op::BangEqual => 10,
             Op::Ampersand => 9,
             Op::Carot => 8,
             Op::Tilde => 7,
@@ -175,23 +165,22 @@ impl Op {
             // and => 5
             // or  => 4
             Op::Bang => 3,
-            Op::Equal |
-            Op::PlusEqual |
-            Op::MinusEqual |
-            Op::BackslashEqual |
-            Op::AstrickEqual |
-            Op::AstrickAstrickEqual |
-            Op::ModulosEqual |
-            Op::LessEqual |
-            Op::GreaterEqual |
-            Op::PipeEqual |
-            Op::AmpersandEqual |
-            Op::CarotEqual |
-            Op::TildeEqual |
-            Op::LessLessEqual |
-            Op::GreaterGreaterEqual => 2,
-            Op::Dollar |
-            Op::Question => 1,
+            Op::Equal
+            | Op::PlusEqual
+            | Op::MinusEqual
+            | Op::BackslashEqual
+            | Op::AstrickEqual
+            | Op::AstrickAstrickEqual
+            | Op::ModulosEqual
+            | Op::LessEqual
+            | Op::GreaterEqual
+            | Op::PipeEqual
+            | Op::AmpersandEqual
+            | Op::CarotEqual
+            | Op::TildeEqual
+            | Op::LessLessEqual
+            | Op::GreaterGreaterEqual => 2,
+            Op::Dollar | Op::Question => 1,
         }
     }
 }
@@ -233,7 +222,8 @@ impl ToString for Op {
             Op::GreaterGreaterEqual => ">>=",
             Op::Dollar => "$",
             Op::Question => "?",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -267,38 +257,38 @@ impl Kw {
             _ => 0,
         }
     }
-
 }
 
 impl ToString for Kw {
     fn to_string(&self) -> String {
         match self {
-            Kw::If =>     "if",
-            Kw::Else =>   "else",
-            Kw::Elif =>   "elif",
-            Kw::For =>    "for",
-            Kw::While =>  "while",
-            Kw::Loop =>   "loop",
-            Kw::With =>   "with",
-            Kw::As =>     "as",
-            Kw::And =>    "and",
-            Kw::Or =>     "or",
-            Kw::Trait =>  "triat",
-            Kw::Use =>    "use",
-            Kw::Fn =>     "fn",
+            Kw::If => "if",
+            Kw::Else => "else",
+            Kw::Elif => "elif",
+            Kw::For => "for",
+            Kw::While => "while",
+            Kw::Loop => "loop",
+            Kw::With => "with",
+            Kw::As => "as",
+            Kw::And => "and",
+            Kw::Or => "or",
+            Kw::Trait => "triat",
+            Kw::Use => "use",
+            Kw::Fn => "fn",
             Kw::Struct => "struct",
-            Kw::Let =>    "let",
-            Kw::Mut =>    "mut",
-            Kw::Pub =>    "pub",
-            Kw::In =>     "in",
-        }.to_string()
+            Kw::Let => "let",
+            Kw::Mut => "mut",
+            Kw::Pub => "pub",
+            Kw::In => "in",
+        }
+        .to_string()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Orientation {
     Left,
-    Right
+    Right,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -399,29 +389,27 @@ impl TokenKind {
 
     pub fn is_assignment(&self) -> bool {
         match self {
-            TokenKind::Operator(op) =>
-                match op {
-                    Op::Equal |
-                    Op::PlusEqual |
-                    Op::MinusEqual |
-                    Op::BackslashEqual |
-                    Op::AstrickEqual |
-                    Op::AstrickAstrickEqual |
-                    Op::ModulosEqual |
-                    Op::LessEqual |
-                    Op::GreaterEqual |
-                    Op::PipeEqual |
-                    Op::AmpersandEqual |
-                    Op::CarotEqual |
-                    Op::TildeEqual |
-                    Op::LessLessEqual |
-                    Op::GreaterGreaterEqual => true,
-                    _ => false,
-                },
-            _ => false
+            TokenKind::Operator(op) => match op {
+                Op::Equal
+                | Op::PlusEqual
+                | Op::MinusEqual
+                | Op::BackslashEqual
+                | Op::AstrickEqual
+                | Op::AstrickAstrickEqual
+                | Op::ModulosEqual
+                | Op::LessEqual
+                | Op::GreaterEqual
+                | Op::PipeEqual
+                | Op::AmpersandEqual
+                | Op::CarotEqual
+                | Op::TildeEqual
+                | Op::LessLessEqual
+                | Op::GreaterGreaterEqual => true,
+                _ => false,
+            },
+            _ => false,
         }
     }
-
 
     pub fn is_keyword(&self) -> bool {
         match self {
@@ -432,15 +420,13 @@ impl TokenKind {
 
     pub fn is_literal(&self) -> bool {
         match self {
-            TokenKind::CharLiteral(_) |
-            TokenKind::StringLiteral(_) |
-            TokenKind::IntegerLiteral(_) |
-            TokenKind::FloatLiteral(_)
-            => true,
+            TokenKind::CharLiteral(_)
+            | TokenKind::StringLiteral(_)
+            | TokenKind::IntegerLiteral(_)
+            | TokenKind::FloatLiteral(_) => true,
             _ => false,
         }
     }
-
 
     pub fn is_control(&self) -> bool {
         match self {
@@ -457,30 +443,31 @@ impl TokenKind {
             "for" => TokenKind::Keyword(Kw::For),
             "while" => TokenKind::Keyword(Kw::While),
             "loop" => TokenKind::Keyword(Kw::Loop),
-//            "use" => TokenKind::Keyword(Kw::Use),
+            //            "use" => TokenKind::Keyword(Kw::Use),
             "with" => TokenKind::Keyword(Kw::With),
             "as" => TokenKind::Keyword(Kw::As),
             "and" => TokenKind::Keyword(Kw::And),
             "or" => TokenKind::Keyword(Kw::Or),
-            "use"    => TokenKind::Keyword(Kw::Use),
-            "fn"     => TokenKind::Keyword(Kw::Fn),
+            "use" => TokenKind::Keyword(Kw::Use),
+            "fn" => TokenKind::Keyword(Kw::Fn),
             "struct" => TokenKind::Keyword(Kw::Struct),
-            "let"    => TokenKind::Keyword(Kw::Let),
-            "mut"    => TokenKind::Keyword(Kw::Mut),
-            "pub"    => TokenKind::Keyword(Kw::Pub),
-            "trait"  => TokenKind::Keyword(Kw::Trait),
-            "in"     => TokenKind::Keyword(Kw::In),
+            "let" => TokenKind::Keyword(Kw::Let),
+            "mut" => TokenKind::Keyword(Kw::Mut),
+            "pub" => TokenKind::Keyword(Kw::Pub),
+            "trait" => TokenKind::Keyword(Kw::Trait),
+            "in" => TokenKind::Keyword(Kw::In),
             _ => TokenKind::Identifier(val.to_string()),
         }
     }
 
     pub fn list_to_str(kinds: &[TokenKind]) -> String {
-        let strings = kinds.iter().map(|kind| {
-            match kind {
+        let strings = kinds
+            .iter()
+            .map(|kind| match kind {
                 TokenKind::Identifier(_) => "identifier".to_string(),
                 _ => kind.to_string(),
-            }
-        }).collect::<Vec<String>>();
+            })
+            .collect::<Vec<String>>();
 
         strings.join(", ")
     }
@@ -507,16 +494,12 @@ impl ToString for TokenKind {
 #[derive(Debug, Clone)]
 pub struct Token {
     kind: TokenKind,
-    pos: Position
+    pos: Position,
 }
-
 
 impl Token {
     pub fn new(kind: TokenKind, pos: Position) -> Self {
-        Self {
-            kind,
-            pos
-        }
+        Self { kind, pos }
     }
 
     pub fn kind(&self) -> &TokenKind {
@@ -550,7 +533,6 @@ impl Token {
     pub fn is_eof(&self) -> bool {
         self.check(TokenKind::Eof)
     }
-
 
     pub fn check(&self, kind: TokenKind) -> bool {
         match (self.kind(), &kind) {

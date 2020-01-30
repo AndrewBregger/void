@@ -1,6 +1,6 @@
 extern crate snafu;
 
-use snafu::{Snafu};
+use snafu::Snafu;
 
 #[derive(Debug)]
 pub enum Error {

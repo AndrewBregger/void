@@ -1,10 +1,10 @@
-use crate::syntax::token::{Position, FilePos, Span};
+use super::compiler::FileRef;
+use crate::syntax::token::{FilePos, Position, Span};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::string::ToString;
 use std::path::PathBuf;
-use std::collections::HashMap;
-use super::compiler::FileRef;
+use std::string::ToString;
 
 enum Severity {
     Info,
@@ -20,37 +20,42 @@ impl ToString for Severity {
             Severity::Warning => "Warning",
             Severity::Error => "Error",
             Severity::Critical => "Critical Error",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
 struct Message {
     msg: String,
     sev: Severity,
-    loc: Option<Position>
+    loc: Option<Position>,
 }
 
 pub struct Diagnostics {
     pub total_errors: u32,
-    pub files: HashMap<PathBuf, FileRef>
+    pub files: HashMap<PathBuf, FileRef>,
 }
 
 impl Diagnostics {
     pub fn new() -> Self {
         Self {
             total_errors: 0,
-            files: HashMap::new()
+            files: HashMap::new(),
         }
     }
 
     fn print_source_line(&self, loc: &Position) {
         // maybe move this somewhere else.
         let mut file = File::open(&loc.file.source).expect("Failed to find file");
-        file.seek(SeekFrom::Start(loc.span.start as u64)).expect("Failed to seek into file");
+        file.seek(SeekFrom::Start(loc.span.start as u64))
+            .expect("Failed to seek into file");
         let mut buf = Vec::with_capacity(loc.span.len());
-        file.read_exact(buf.as_mut_slice()).expect("Failed to read from file");
+        file.read_exact(buf.as_mut_slice())
+            .expect("Failed to read from file");
 
-        let s = std::str::from_utf8(&buf).expect("Failed to transform buffer").trim_start();
+        let s = std::str::from_utf8(&buf)
+            .expect("Failed to transform buffer")
+            .trim_start();
         println!(">\t{}", s);
     }
 
@@ -74,7 +79,7 @@ impl Diagnostics {
         let msg = Message {
             msg: msg.to_string(),
             sev: Severity::Error,
-            loc: Some(loc.clone())
+            loc: Some(loc.clone()),
         };
 
         self.print_message(&msg);
