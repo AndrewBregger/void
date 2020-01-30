@@ -37,6 +37,10 @@ impl<'a> TokenStream<'a> {
         }
     }
 
+    pub fn path(&self) -> &PathBuf {
+        &self.file
+    }
+
     fn bump(&mut self) {
         if self.index < self.source.len() {
             self.index += 1;
@@ -64,7 +68,7 @@ impl<'a> TokenStream<'a> {
         let value = &self.source[start..end];
 
         let kind = if value == "_" {
-           TokenKind::Control(Ctrl::Underscore) 
+           TokenKind::Control(Ctrl::Underscore)
         }
         else {
             TokenKind::get_ident_kind(value)

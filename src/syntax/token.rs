@@ -64,6 +64,7 @@ pub struct Position {
     pub span: Span
 }
 
+
 impl Position {
     pub fn new(file: FilePos, span: Span) -> Self {
         Self {
@@ -474,8 +475,6 @@ impl TokenKind {
     }
 
     pub fn list_to_str(kinds: &[TokenKind]) -> String {
-        let mut res = String::new();
-
         let strings = kinds.iter().map(|kind| {
             match kind {
                 TokenKind::Identifier(_) => "identifier".to_string(),

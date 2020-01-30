@@ -1,15 +1,13 @@
-extern crate snafu;
-use snafu::{ensure, Backtrace, ErrorCompat, ResultExt, Snafu};
 use super::token::{Token, FilePos, Position, Span, TokenKind, Ctrl, Kw, Op, Orientation};
 use super::ast::*;
 use super::tokenstream::TokenStream;
-use super::Diagnostics;
 use std::iter::Iterator;
 use std::path::PathBuf;
 use std::cmp::{Eq, PartialEq};
 use std::collections::HashSet;
 use crate::syntax::token::Kw::Or;
 use crate::syntax::ast::Mutability::Mutable;
+use crate::diagnostics::Diagnostics;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -64,12 +62,12 @@ pub struct Parser<'a> {
     restrictions: Restrictions,
     index: usize,
     token: Token,
-    diagnostics: Diagnostics,
+    diagnostics: &'a mut Diagnostics,
     peek: Option<Token>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, path: PathBuf) -> Result<Self> {
+    pub fn new(source: &'a str, path: PathBuf, diagnostics: &'a mut Diagnostics) -> Result<Self> {
         let mut stream = TokenStream::<'a>::new(source, path);
         let token = stream.next();
         let peek = stream.next();
@@ -83,10 +81,14 @@ impl<'a> Parser<'a> {
                 index: 0usize,
                 restrictions: Restrictions::default(),
                 token: token.unwrap(),
-                diagnostics: Diagnostics::new(),
+                diagnostics,
                 peek
             })
         }
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        self.stream.path()
     }
 
     fn advance(&mut self) {
@@ -153,8 +155,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_file(&mut self) -> Result<Vec<Ptr<Item>>> {
-        let mut items = Vec::new();
+    pub fn parse_file(&mut self) -> Result<ParsedFile> {
+        let mut file = ParsedFile::new(self.path());
 
         while !self.check(&TokenKind::Eof) {
             let item = self.parse_item()?;
@@ -163,9 +165,15 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::Control(Ctrl::Semicolon))?;
             }
 
-            items.push(item);
+            if item.is_import() {
+                file.add_import(item);
+            }
+            else {
+                file.add_item(item);
+            }
         }
-        Ok(items)
+
+        Ok(file)
     }
 
     fn parse_block_expr(&mut self) -> Result<Ptr<Expr>> {

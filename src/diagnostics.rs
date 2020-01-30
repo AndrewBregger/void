@@ -1,7 +1,10 @@
-use super::token::{Position, FilePos, Span};
+use crate::syntax::token::{Position, FilePos, Span};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::string::ToString;
+use std::path::PathBuf;
+use std::collections::HashMap;
+use super::compiler::FileRef;
 
 enum Severity {
     Info,
@@ -28,13 +31,15 @@ struct Message {
 }
 
 pub struct Diagnostics {
-    total_errors: u32,
+    pub total_errors: u32,
+    pub files: HashMap<PathBuf, FileRef>
 }
 
 impl Diagnostics {
     pub fn new() -> Self {
         Self {
-            total_errors: 0
+            total_errors: 0,
+            files: HashMap::new()
         }
     }
 

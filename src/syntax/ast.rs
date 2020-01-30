@@ -1,4 +1,4 @@
-use super::token::{Position, Op};
+use super::token::{Position, Op, FilePos, Span};
 use std::string::ToString;
 
 pub type Ptr<T> = Box<T>;
@@ -80,6 +80,12 @@ impl Ident {
 impl TreeRender for Ident {
     fn render(&self, idx: u32) {
         println!("{}Ident: {} {}", indent(idx), self.val.as_str(), self.pos.span);
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.val == other.val
     }
 }
 
@@ -529,6 +535,8 @@ pub enum ItemKind {
     LocalInit(Mutability, Ptr<Pattern>, Ptr<Expr>),
     LocalTyped(Mutability, Ptr<Pattern>, Ptr<TypeSpec>),
     Local(Mutability, Ptr<Pattern>, Ptr<TypeSpec>, Ptr<Expr>),
+    // for items defined by the compiler and are not located in a file.
+    Internal
 }
 
 #[derive(Debug, Clone)]
@@ -539,6 +547,20 @@ pub struct Item {
 }
 
 impl Item {
+
+    pub fn internal_ptr() -> Ptr<Item> {
+        use std::path::PathBuf;
+
+        Ptr::new(Item::new(
+                Visibility::Public,
+                ItemKind::Internal,
+                Position::new(
+                    FilePos::new(0, 0, PathBuf::new()),
+                    Span::new(0, 0)
+                )
+            ))
+    }
+
     pub fn new(vis: Visibility, kind: ItemKind, position: Position) -> Self {
         Self {
             vis,
@@ -549,6 +571,43 @@ impl Item {
 
     pub fn kind(&self) -> &ItemKind {
         &self.kind
+    }
+
+    pub fn is_import(&self) -> bool {
+        use ItemKind::*;
+
+        match self.kind() {
+            _ => false,
+        }
+    }
+
+    pub fn is_variable(&self) -> bool {
+        use ItemKind::*;
+
+        match self.kind() {
+            LocalInit(..) |
+            LocalTyped(..) |
+            Local(..) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_struct(&self) -> bool {
+        use ItemKind::*;
+
+        match self.kind() {
+            Struct(..) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_function(&self) -> bool {
+        use ItemKind::*;
+
+        match self.kind() {
+            Function(..) => true,
+            _ => false,
+        }
     }
 }
 
@@ -672,6 +731,44 @@ impl TreeRender for TypeSpec {
                 ty.render(idx + 1);
             }
             _ => {},
+        }
+    }
+}
+
+pub struct ParsedFile {
+    path: std::path::PathBuf,
+    imports: Vec<Ptr<Item>>,
+    items: Vec<Ptr<Item>>,
+}
+
+impl ParsedFile {
+    pub fn new(path: &std::path::PathBuf) -> Self {
+        Self {
+            path: path.clone(),
+            imports: Vec::new(),
+            items: Vec::new(),
+        }
+    }
+
+    pub fn add_import(&mut self, item: Ptr<Item>) {
+        self.imports.push(item)
+    }
+
+    pub fn add_item(&mut self, item: Ptr<Item>) {
+        self.items.push(item)
+    }
+}
+
+impl TreeRender for ParsedFile {
+    fn render(&self, idx: u32) {
+        println!("{}Imports:", indent(idx));
+        for imp in &self.imports {
+            imp.render(idx + 1);
+        }
+
+        println!("{}Items:", indent(idx));
+        for item in &self.items {
+            item.render(idx + 1);
         }
     }
 }
