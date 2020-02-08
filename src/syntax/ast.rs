@@ -732,6 +732,10 @@ pub enum ItemKind {
     TypeParam(TypeParam),
     // for items defined by the compiler and are not located in a file.
     Internal,
+    // for primative types defined by the compiler
+    Primative,
+    // for items that should not be copied yet. This is really a hack because I do not know how to handle this.
+    Invalid,
 }
 
 #[derive(Debug, Clone)]
@@ -746,6 +750,22 @@ impl Item {
         Ptr::new(Item::new(
             Visibility::Public,
             ItemKind::Internal,
+            Position::zero(),
+        ))
+    }
+
+    pub fn invalid_ptr() -> Ptr<Item> {
+        Ptr::new(Item::new(
+            Visibility::Private,
+            ItemKind::Invalid,
+            Position::zero()
+        ))
+    }
+
+    pub fn primative_ptr() -> Ptr<Item> {
+        Ptr::new(Item::new(
+            Visibility::Public,
+            ItemKind::Primative,
             Position::zero(),
         ))
     }
@@ -797,6 +817,15 @@ impl Item {
         }
     }
 
+    pub fn is_primative(&self) -> bool {
+        use ItemKind::*;
+
+        match self.kind() {
+            Primative => true,
+            _ => false,
+        }
+    }
+
     pub fn name(&self) -> &String {
         use ItemKind::*;
         static INVALID_STRING: String = String::new();
@@ -808,6 +837,8 @@ impl Item {
             FunctionParam(param) => param.name_string(),
             TypeParam(type_param) => type_param.name_string(),
             Internal |
+            Primative |
+            Invalid |
             LocalInit(..) |
             LocalTyped(..) |
             Local(..) |

@@ -46,12 +46,12 @@ impl<'a> Semantics<'a> {
 
     fn load_prelude(&mut self, prelude_path: &str) {
         use TypeKind::*;
-        let mut prelude_scope = self.scope_manager.get_prelude_mut();
+        let prelude_scope = self.scope_manager.get_prelude_mut();
         prelude_scope
             .entry("i8".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("i8", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(I8),
                 None,
             ));
@@ -60,7 +60,7 @@ impl<'a> Semantics<'a> {
             .entry("i16".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("i16", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(I16),
                 None,
             ));
@@ -69,7 +69,7 @@ impl<'a> Semantics<'a> {
             .entry("i32".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("i32", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(I32),
                 None,
             ));
@@ -78,7 +78,7 @@ impl<'a> Semantics<'a> {
             .entry("i64".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("i64", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(I64),
                 None,
             ));
@@ -87,7 +87,7 @@ impl<'a> Semantics<'a> {
             .entry("u8".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("u8", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(U8),
                 None,
             ));
@@ -96,7 +96,7 @@ impl<'a> Semantics<'a> {
             .entry("u16".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("u16", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(U16),
                 None,
             ));
@@ -105,7 +105,7 @@ impl<'a> Semantics<'a> {
             .entry("u32".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("u32", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(U32),
                 None,
             ));
@@ -114,8 +114,26 @@ impl<'a> Semantics<'a> {
             .entry("u64".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("u64", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(U64),
+                None,
+            ));
+
+        prelude_scope
+            .entry("f32".to_string())
+            .or_insert(ItemInfo::resolved(
+                Ident::new("f32", Position::zero()),
+                Item::primative_ptr(),
+                Type::new(F32),
+                None,
+            ));
+
+        prelude_scope
+            .entry("f64".to_string())
+            .or_insert(ItemInfo::resolved(
+                Ident::new("f64", Position::zero()),
+                Item::primative_ptr(),
+                Type::new(F64),
                 None,
             ));
 
@@ -123,7 +141,7 @@ impl<'a> Semantics<'a> {
             .entry("char".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("char", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(Char),
                 None,
             ));
@@ -132,7 +150,7 @@ impl<'a> Semantics<'a> {
             .entry("bool".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("bool", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(Bool),
                 None,
             ));
@@ -141,7 +159,7 @@ impl<'a> Semantics<'a> {
             .entry("__UNIT__".to_string())
             .or_insert(ItemInfo::resolved(
                 Ident::new("__UNIT__", Position::zero()),
-                Item::internal_ptr(),
+                Item::primative_ptr(),
                 Type::new(Unit),
                 None,
             ));
@@ -164,7 +182,11 @@ impl<'a> Semantics<'a> {
             let mut typer = Typer::new(&mut self.diagnocits);
 
             match typer.resolve_item(&mut environment, &mut item) {
-                Ok(_) => {},
+                Ok(item) => {
+                    let current = environment.scope_manager.get_current_mut();
+                    let name = item.name();
+                    current.entry(name.to_string()).or_insert(item);
+                },
                 Err(Error::UnresovledDependency(name)) => {
                     // attempt to resolve this name.
                     println!("Found Unresolved depended name: {}", name);

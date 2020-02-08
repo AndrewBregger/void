@@ -30,7 +30,8 @@ impl ScopeManager {
     }
 
     pub fn push_scope(&mut self, kind: ScopeKind) -> &mut Scope {
-        self.new_scope(kind, self.current)
+        self.current =  self.new_scope(kind, self.current).id();
+        self.get_current_mut()
     }
 
     pub fn pop_scope(&mut self) {
@@ -66,7 +67,7 @@ impl ScopeManager {
     }
 
     pub fn get_scope(&self, id: &ScopeId) -> &Scope {
-        // this is safe because it is impossible to construct
+        // this is safe because it is impoT = 1.to[T](),ssible to construct
         // a ScopeId with an invalid value. They will always be valid.
         // This assumption holds for the mutable version of this function.
         self.scopes.get(id.0).unwrap()

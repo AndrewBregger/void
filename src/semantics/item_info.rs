@@ -73,17 +73,24 @@ impl ItemInfo {
         }
     }
 
-
-    pub fn resolve(self) -> Self {
+    pub fn resolve(self, ty: Type) -> Self {
         if self.state == ItemState::Resolved {
             self
         }
         else {
             Self {
                 state: ItemState::Resolved,
+                resovled_type: ty,
                 ..self
             }
 	   }
+    }
+
+    pub fn with_item(self, item: Ptr<Item>) -> Self {
+        Self {
+            item,
+            ..self
+        }
     }
 
     pub fn pos(&self) -> &Position {
@@ -114,11 +121,15 @@ impl ItemInfo {
         self.item.is_struct()
     }
 
+    pub fn is_primative(&self) -> bool {
+        self.item.is_primative()
+    }
+
     pub fn is_function(&self) -> bool {
         self.item.is_function()
     }
 
     pub fn is_type(&self) -> bool {
-        self.is_struct() // || self.is_trait() || self.is_variant()
+        self.is_struct() || self.is_primative() // || self.is_trait() || self.is_variant()
     }
 }

@@ -536,7 +536,7 @@ impl<'a> Parser<'a> {
 
         match self.token.kind().clone() {
             TokenKind::Operator(op) => match op {
-                Op::Minus | Op::Tilde | Op::Ampersand => {
+                Op::Minus | Op::Tilde | Op::Ampersand | Op::Astrick => {
                     if self.restrictions.check(Restriction::TypeExprOnly) {
                         self.diagnostics.syntax_error(format!("invalid unary operator in type expression: '{}'", op.to_string()).as_str(), self.token.pos());
                         return Err(Error::ParseError);
