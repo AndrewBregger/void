@@ -2,23 +2,30 @@ pub mod checked_file;
 pub mod item_info;
 pub mod scope;
 pub mod types;
+pub mod typer;
 
 use std::rc::Rc;
+use std::collections::HashSet;
 
 use crate::diagnostics::Diagnostics;
+use crate::syntax::token::{Position};
 use crate::syntax::ast::*;
 
 use checked_file::*;
 use item_info::*;
 use scope::*;
 use types::*;
+use typer::*;
 
+#[derive(Debug, Clone)]
 pub enum Error {
     TypeError,
     InvalidModule,
+    FatalError,
+    UnresovledDependency(String),
 }
 
-type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = ::std::result::Result<T, Error>;
 
 pub struct Semantics<'a> {
     diagnocits: &'a mut Diagnostics,
@@ -38,105 +45,137 @@ impl<'a> Semantics<'a> {
     }
 
     fn load_prelude(&mut self, prelude_path: &str) {
+        use TypeKind::*;
         let mut prelude_scope = self.scope_manager.get_prelude_mut();
         prelude_scope
             .entry("i8".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("i8", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::I8),
+                Type::new(I8),
                 None,
             ));
 
         prelude_scope
             .entry("i16".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("i16", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::I16),
+                Type::new(I16),
                 None,
             ));
 
         prelude_scope
             .entry("i32".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("i32", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::I32),
+                Type::new(I32),
                 None,
             ));
 
         prelude_scope
             .entry("i64".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("i64", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::I64),
+                Type::new(I64),
                 None,
             ));
 
         prelude_scope
             .entry("u8".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("u8", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::U8),
+                Type::new(U8),
                 None,
             ));
 
         prelude_scope
             .entry("u16".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("u16", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::U16),
+                Type::new(U16),
                 None,
             ));
 
         prelude_scope
             .entry("u32".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("u32", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::U32),
+                Type::new(U32),
                 None,
             ));
 
         prelude_scope
             .entry("u64".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("u64", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::U64),
+                Type::new(U64),
                 None,
             ));
 
         prelude_scope
             .entry("char".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("char", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::Char),
+                Type::new(Char),
                 None,
             ));
 
         prelude_scope
             .entry("bool".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("bool", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::Bool),
+                Type::new(Bool),
                 None,
             ));
 
         prelude_scope
             .entry("__UNIT__".to_string())
             .or_insert(ItemInfo::resolved(
+                Ident::new("__UNIT__", Position::zero()),
                 Item::internal_ptr(),
-                Rc::new(Type::Unit),
+                Type::new(Unit),
                 None,
             ));
     }
 
-    pub fn check_top_level_item(&mut self, item: Ptr<Item>) -> Result<ItemInfo> {
-    }
-
-    pub fn check_program(&mut self, file: &ParsedFile) -> Result<CheckedFile> {
+    pub fn check_program(&mut self, file: &mut ParsedFile) -> Result<CheckedFile> {
         let checked_file = CheckedFile::new();
 
+        self.scope_manager.push_scope(ScopeKind::Module);
+
+        let mut top_level_names = HashSet::new();
+
+
         for item in file.items() {
-            self.check_top_level_item(item)?;
+            top_level_names.insert(item.name().clone());
         }
+
+        for mut item in file.items_mut() {
+            let mut environment = Environment::new(&mut self.scope_manager, &top_level_names, true);
+            let mut typer = Typer::new(&mut self.diagnocits);
+
+            match typer.resolve_item(&mut environment, &mut item) {
+                Ok(_) => {},
+                Err(Error::UnresovledDependency(name)) => {
+                    // attempt to resolve this name.
+                    println!("Found Unresolved depended name: {}", name);
+                }
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                }
+            }
+        }
+
+        self.scope_manager.pop_scope();
 
         Ok(checked_file)
     }

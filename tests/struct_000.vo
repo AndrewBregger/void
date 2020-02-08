@@ -1,4 +1,4 @@
-struct Vec2[T] {
-    x: T = 1.0.to[T](),
-    y: T,
+struct Vec2 {
+    x: T = 1.to[T](),
+    y: f32
 }

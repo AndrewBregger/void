@@ -179,7 +179,26 @@ impl<'a> Parser<'a> {
             }
         }
 
+        self.validate_top_level_items(&file)?;
+
         Ok(file)
+    }
+
+    fn validate_top_level_items(&mut self, file: &ParsedFile) -> Result<()> {
+        let mut has_error = false;
+        for item in file.items() {
+            if item.is_variable() {
+                self.diagnostics.syntax_error("invalid top level item declaration", item.pos());
+                has_error = true;
+            }
+        }
+
+        if has_error {
+            Err(Error::ParseError)
+        }
+        else {
+            Ok(())
+        }
     }
 
     fn parse_block_expr(&mut self) -> Result<Ptr<Expr>> {
@@ -253,41 +272,49 @@ impl<'a> Parser<'a> {
 
     fn parse_bottom_expr(&mut self) -> Result<Ptr<Expr>> {
         let pos = self.token.pos().clone();
-        let expr = match self.token.kind().clone() {
-            TokenKind::Identifier(_) => self.parse_name()?,
-            TokenKind::IntegerLiteral(val) => {
-                self.advance();
-                Ptr::new(Expr::new(ExprKind::IntegerLiteral(val), pos))
-            }
-            TokenKind::FloatLiteral(val) => {
-                self.advance();
-                Ptr::new(Expr::new(ExprKind::FloatLiteral(val), pos))
-            }
-            TokenKind::StringLiteral(val) => {
-                self.advance();
-                Ptr::new(Expr::new(ExprKind::StringLiteral(val.clone()), pos))
-            }
-            TokenKind::CharLiteral(val) => {
-                self.advance();
-                Ptr::new(Expr::new(ExprKind::CharLiteral(val), pos))
-            }
-            TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
-                self.advance();
-                let expr = self.parse_expr()?;
-                self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
-                expr
-            }
-            TokenKind::Control(Ctrl::Bracket(Orientation::Left)) => self.parse_block_expr()?,
-            TokenKind::Keyword(Kw::If)
-            | TokenKind::Keyword(Kw::While)
-            | TokenKind::Keyword(Kw::For)
-            | TokenKind::Keyword(Kw::Loop) => self.parse_branch_expr()?,
-            _ => {
-                self.diagnostics.syntax_error(
-                    format!("expecting expression, found {}", self.token.to_string()).as_str(),
-                    self.token.pos(),
-                );
-                return Err(Error::ParseError);
+
+        let expr = if self.restrictions.check(Restriction::TypeExprOnly) {
+            // if only type expressions are valid then only named
+            // expressions are valid.
+            self.parse_name()?
+        }
+        else {
+            match self.token.kind().clone() {
+                TokenKind::Identifier(_) => self.parse_name()?,
+                TokenKind::IntegerLiteral(val) => {
+                    self.advance();
+                    Ptr::new(Expr::new(ExprKind::IntegerLiteral(val), pos))
+                }
+                TokenKind::FloatLiteral(val) => {
+                    self.advance();
+                    Ptr::new(Expr::new(ExprKind::FloatLiteral(val), pos))
+                }
+                TokenKind::StringLiteral(val) => {
+                    self.advance();
+                    Ptr::new(Expr::new(ExprKind::StringLiteral(val.clone()), pos))
+                }
+                TokenKind::CharLiteral(val) => {
+                    self.advance();
+                    Ptr::new(Expr::new(ExprKind::CharLiteral(val), pos))
+                }
+                TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
+                    self.advance();
+                    let expr = self.parse_expr()?;
+                    self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Right)))?;
+                    expr
+                }
+                TokenKind::Control(Ctrl::Bracket(Orientation::Left)) => self.parse_block_expr()?,
+                TokenKind::Keyword(Kw::If)
+                | TokenKind::Keyword(Kw::While)
+                | TokenKind::Keyword(Kw::For)
+                | TokenKind::Keyword(Kw::Loop) => self.parse_branch_expr()?,
+                _ => {
+                    self.diagnostics.syntax_error(
+                        format!("expecting expression, found {}", self.token.to_string()).as_str(),
+                        self.token.pos(),
+                    );
+                    return Err(Error::ParseError);
+                }
             }
         };
         Ok(expr)
@@ -422,6 +449,10 @@ impl<'a> Parser<'a> {
                 {
                     let name = self.parse_name()?;
                     if self.check(&TokenKind::Control(Ctrl::Paren(Orientation::Left))) {
+                        if self.restrictions.check(Restriction::TypeExprOnly) {
+                            self.diagnostics.syntax_error(format!("invalid type expression: unexpected '{}'", self.token.to_string()).as_str(), self.token.pos());
+                            return Err(Error::ParseError)
+                        }
                         let mut actuals = vec![operand];
 
                         pos.span.extend_to(&self.token);
@@ -479,7 +510,13 @@ impl<'a> Parser<'a> {
 
             match self.token.kind().clone() {
                 TokenKind::Control(Ctrl::Paren(Orientation::Left)) => {
-                    operand = self.parse_function_call(operand)?
+                    if self.restrictions.check(Restriction::TypeExprOnly) {
+                        self.diagnostics.syntax_error("unexpected '(' in type expression", self.token.pos());
+                        return Err(Error::ParseError);
+                    }
+                    else {
+                        operand = self.parse_function_call(operand)?
+                    }
                 }
                 TokenKind::Control(Ctrl::Period) => operand = self.parse_period_suffix(operand)?,
                 _ => break,
@@ -496,13 +533,20 @@ impl<'a> Parser<'a> {
 
     fn parse_unary_expr(&mut self) -> Result<Ptr<Expr>> {
         let mut pos = self.token.pos().clone();
+
         match self.token.kind().clone() {
             TokenKind::Operator(op) => match op {
                 Op::Minus | Op::Tilde | Op::Ampersand => {
-                    let expr = self.parse_unary_expr()?;
-                    pos.extend(expr.pos());
-                    let kind = ExprKind::Unary(op.clone(), expr);
-                    return Ok(Ptr::new(Expr::new(kind, pos)));
+                    if self.restrictions.check(Restriction::TypeExprOnly) {
+                        self.diagnostics.syntax_error(format!("invalid unary operator in type expression: '{}'", op.to_string()).as_str(), self.token.pos());
+                        return Err(Error::ParseError);
+                    }
+                    else {
+                        let expr = self.parse_unary_expr()?;
+                        pos.extend(expr.pos());
+                        let kind = ExprKind::Unary(op.clone(), expr);
+                        return Ok(Ptr::new(Expr::new(kind, pos)));
+                    }
                 }
                 _ => {}
             },
@@ -516,7 +560,10 @@ impl<'a> Parser<'a> {
         let mut expr = self.parse_unary_expr()?;
 
         //    println!("Parse Assoc: {}", self.token.to_string());
-
+        if self.restrictions.check(Restriction::TypeExprOnly) {
+            return Ok(expr);
+        }
+        
         while self.check_current(|token| token.prec() >= prec_min) {
             // it known this is safe because Self::check_current would have returned
             // false if it was none.
@@ -704,18 +751,18 @@ impl<'a> Parser<'a> {
         };
 
         let kind = match (ty, init) {
-            (Some(ty), Some(exp)) => {
-                pos.span.extend_node(ty.as_ref());
-                pos.span.extend_node(exp.as_ref());
-                ItemKind::Local(mutability, pattern, ty, exp)
+            (Some(type_spec), Some(init)) => {
+                pos.span.extend_node(init.as_ref());
+                pos.span.extend_node(init.as_ref());
+                ItemKind::Local(Variable {mutability, local: pattern, type_spec, init})
             }
-            (Some(ty), None) => {
-                pos.span.extend_node(ty.as_ref());
-                ItemKind::LocalTyped(mutability, pattern, ty)
+            (Some(type_spec), None) => {
+                pos.span.extend_node(type_spec.as_ref());
+                ItemKind::LocalTyped(VariableTyped {mutability, local: pattern, type_spec})
             }
-            (None, Some(exp)) => {
-                pos.span.extend_node(exp.as_ref());
-                ItemKind::LocalInit(mutability, pattern, exp)
+            (None, Some(init)) => {
+                pos.span.extend_node(init.as_ref());
+                ItemKind::LocalInit(VariableInit {mutability, local: pattern, init })
             }
             (None, None) => {
                 self.diagnostics.syntax_error(
@@ -762,8 +809,11 @@ impl<'a> Parser<'a> {
         let mut expecting_type = false;
         while !self.check_control(Ctrl::Brace(Orientation::Right)) {
             expecting_type = false;
-            let param = self.parse_typeparam()?;
-            pos.span.extend_node(&param);
+            let param = self.parse_typeparam().map(|p| {
+                let pos = p.pos().clone(); 
+                Ptr::new(Item::new(Visibility::Private, ItemKind::TypeParam(p), pos))
+            })?;
+            pos.span.extend_node(param.as_ref());
             params.push(param);
 
             if self.allow(TokenKind::Control(Ctrl::Comma)) {
@@ -795,7 +845,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_field(&mut self) -> Result<Ptr<Field>> {
+    fn parse_field(&mut self) -> Result<Field> {
         let mut pos = self.token.pos().clone();
         let vis = self.parse_visibility();
         let name = self.parse_ident()?;
@@ -816,15 +866,15 @@ impl<'a> Parser<'a> {
             (Some(ty), Some(exp)) => {
                 pos.span.extend_node(ty.as_ref());
                 pos.span.extend_node(exp.as_ref());
-                FieldKind::Member(name, ty, exp)
+                FieldKind::Member(ty, exp)
             }
             (Some(ty), None) => {
                 pos.span.extend_node(ty.as_ref());
-                FieldKind::MemberTyped(name, ty)
+                FieldKind::MemberTyped(ty)
             }
             (None, Some(exp)) => {
                 pos.span.extend_node(exp.as_ref());
-                FieldKind::MemberInit(name, exp)
+                FieldKind::MemberInit(exp)
             }
             (None, None) => {
                 self.diagnostics.syntax_error(
@@ -835,7 +885,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(Ptr::new(Field::new(vis, kind, pos)))
+        Ok(Field::new(vis, name, kind, pos))
     }
 
     fn parse_struct_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
@@ -853,7 +903,11 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Control(Ctrl::Bracket(Orientation::Left)))?;
         let mut fields = Vec::new();
         while !self.check(&TokenKind::Control(Ctrl::Bracket(Orientation::Right))) {
-            let field = self.parse_field()?;
+            let field = self.parse_field().map(|field| {
+                let pos = field.pos().clone();
+                let vis = field.vis();
+                Ptr::new(Item::new(vis, ItemKind::StructField(field), pos))
+            })?;
             pos.span.extend_node(field.as_ref());
             fields.push(field);
 
@@ -867,12 +921,12 @@ impl<'a> Parser<'a> {
 
         Ok(Ptr::new(Item::new(
             vis,
-            ItemKind::Struct(name, type_params, fields),
+            ItemKind::Struct(Structure {name, type_params, fields}),
             pos,
         )))
     }
 
-    fn parse_parameter(&mut self) -> Result<Ptr<Param>> {
+    fn parse_parameter(&mut self) -> Result<Param> {
         let mut pos = self.token.pos().clone();
         let mutability = if self.allow(TokenKind::Keyword(Kw::Mut)) {
             Mutability::Mutable
@@ -917,17 +971,24 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(Ptr::new(Param::new(mutability, kind, pos)))
+        Ok(Param::new(mutability, kind, pos))
     }
 
-    fn parse_parameters(&mut self) -> Result<Vec<Ptr<Param>>> {
+    fn parse_parameters(&mut self) -> Result<Vec<Ptr<Item>>> {
         let mut pos = self.token.pos().clone();
         let start = self.expect(TokenKind::Control(Ctrl::Paren(Orientation::Left)))?;
         let mut params = Vec::new();
         let mut expect_param = false;
         while !self.check(&TokenKind::Control(Ctrl::Paren(Orientation::Right))) {
             expect_param = false;
-            let param = self.parse_parameter()?;
+            let param = self.parse_parameter().map(|param|{
+                let pos = param.pos().clone();
+                Ptr::new(Item::new(
+                    Visibility::Private,
+                    ItemKind::FunctionParam(param),
+                    pos
+                ))
+            })?;
             pos.span.extend_node(param.as_ref());
             params.push(param);
 
@@ -954,6 +1015,7 @@ impl<'a> Parser<'a> {
         let mut pos = start.pos().clone();
         let name = self.parse_ident()?;
         let type_params = self.try_parse_typeparams()?;
+
         let params = self.parse_parameters()?;
         let ret = if !self.check_one_of(vec![
             TokenKind::Control(Ctrl::Bracket(Orientation::Left)),
@@ -979,7 +1041,7 @@ impl<'a> Parser<'a> {
         };
         pos.span.extend_node(body.as_ref());
 
-        let kind = ItemKind::Function(name, type_params, params, ret, body);
+        let kind = ItemKind::Funct(Function { name, type_params, params, ret, body });
         Ok(Ptr::new(Item::new(vis, kind, pos)))
     }
 
@@ -1089,38 +1151,38 @@ impl<'a> Parser<'a> {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
+// #[cfg(test)]
+// mod test {
+//     use super::*;
 
-    #[test]
-    fn test_expr() {
-        let test_input = "x.y + 1.0.to_string";
-        let mut parser = Parser::new(test_input, PathBuf::new());
+//     #[test]
+//     fn test_expr() {
+//         let test_input = "x.y + 1.0.to_string";
+//         let mut parser = Parser::new(test_input, PathBuf::new());
 
-        let valid = match parser.parse_expr() {
-            Ok(expr) => true,
-            Err(err) => false,
-        };
-        assert!(valid, "");
-    }
+//         let valid = match parser.parse_expr() {
+//             Ok(expr) => true,
+//             Err(err) => false,
+//         };
+//         assert!(valid, "");
+//     }
 
-    #[test]
-    fn test_local_item() {
-        let test_input = "let x = 10.0";
-        let mut parser = Parser::new(test_input, PathBuf::new());
+//     #[test]
+//     fn test_local_item() {
+//         let test_input = "let x = 10.0";
+//         let mut parser = Parser::new(test_input, PathBuf::new());
 
-        let valid = match parser.parse_item() {
-            Ok(item) => {
-                item.render(0);
-                true
-            }
-            Err(err) => {
-                println!("{}", err);
-                false
-            }
-        };
+//         let valid = match parser.parse_item() {
+//             Ok(item) => {
+//                 item.render(0);
+//                 true
+//             }
+//             Err(err) => {
+//                 println!("{}", err);
+//                 false
+//             }
+//         };
 
-        assert!(valid, "");
-    }
-}
+//         assert!(valid, "");
+//     }
+// }

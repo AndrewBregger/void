@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 snafu = "0.6.0"
+clap  = "2.33.0"

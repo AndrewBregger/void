@@ -37,7 +37,7 @@ impl ToString for Mutability {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Visibility {
     Public,
     Private,
@@ -69,10 +69,17 @@ impl Ident {
         }
     }
 
+    #[inline]
     pub fn value(&self) -> &str {
         self.val.as_str()
     }
 
+    #[inline]
+    pub fn value_string(&self) -> &String {
+        &self.val
+    }
+
+    #[inline]
     pub fn pos(&self) -> &Position {
         &self.pos
     }
@@ -120,7 +127,7 @@ pub enum ExprKind {
 
 #[derive(Debug, Clone)]
 pub struct Expr {
-    kind: ExprKind,
+    pub kind: ExprKind,
     position: Position,
 }
 
@@ -250,7 +257,7 @@ pub enum StmtKind {
 
 #[derive(Debug, Clone)]
 pub struct Stmt {
-    kind: StmtKind,
+    pub kind: StmtKind,
     position: Position,
 }
 
@@ -293,6 +300,7 @@ impl TreeRender for Stmt {
 pub enum PatternKind {
     Identifier(Ident),
     Tuple(Vec<Ptr<Pattern>>),
+    // Ident here should be changed to a Path of some sort
     Variant(Ident, Vec<Ptr<Pattern>>),
     //    Struct(Ident, Vec<>)
     Ignore,
@@ -309,8 +317,30 @@ impl Pattern {
         Self { kind, position }
     }
 
-    pub fn pos(&self) -> &Position {
-        &self.position
+    pub fn kind(&self) -> &PatternKind {
+        &self.kind
+    }
+
+    pub fn collect_names<'a>(&'a self) -> Vec<&'a String> {
+        let mut res = Vec::<&'a _>::new();
+        match self.kind() {
+            PatternKind::Identifier(ident) => {
+                res.push(&ident.val);
+            }
+            PatternKind::Tuple(patterns) => {
+                for pattern in patterns {
+                    res.extend(pattern.collect_names());
+                }
+            }
+            PatternKind::Variant(_, patterns) => {
+                for pattern in patterns {
+                    res.extend(pattern.collect_names());
+                }
+            }
+            PatternKind::Ignore => {},
+        }
+
+        res
     }
 }
 
@@ -366,6 +396,18 @@ impl TypeParam {
     pub fn kind(&self) -> &TypeParamKind {
         &self.kind
     }
+
+    pub fn name(&self) -> &str {
+        self.name_string().as_str()
+    }
+
+    pub fn name_string(&self) -> &String {
+        use TypeParamKind::*;
+        match self.kind() {
+            Named(n) |
+            BoundedNamed(n, ..) => &n.val
+        }
+    }
 }
 
 impl AstNode for TypeParam {
@@ -392,12 +434,12 @@ impl TreeRender for TypeParam {
 
 #[derive(Debug, Clone)]
 pub struct TypeParams {
-    types: Vec<TypeParam>,
+    types: Vec<Ptr<Item>>,
     position: Position,
 }
 
 impl TypeParams {
-    pub fn new(types: Vec<TypeParam>, position: Position) -> Self {
+    pub fn new(types: Vec<Ptr<Item>>, position: Position) -> Self {
         Self { types, position }
     }
 }
@@ -427,7 +469,7 @@ pub enum ParamKind {
 #[derive(Debug, Clone)]
 pub struct Param {
     mutability: Mutability,
-    kind: ParamKind,
+    pub kind: ParamKind,
     position: Position,
 }
 
@@ -442,6 +484,20 @@ impl Param {
 
     pub fn kind(&self) -> &ParamKind {
         &self.kind
+    }
+
+    pub fn name(&self) -> &str {
+        self.name_string().as_str()
+    }
+
+    pub fn name_string(&self) -> &String {
+        use ParamKind::*;
+
+        match self.kind() {
+            ParamInit(n, ..) |
+            ParamTyped(n, ..) |
+            Param(n, ..) => &n.val
+        }
     }
 }
 
@@ -474,28 +530,42 @@ impl TreeRender for Param {
 
 #[derive(Debug, Clone)]
 pub enum FieldKind {
-    MemberInit(Ident, Ptr<Expr>),
-    MemberTyped(Ident, Ptr<TypeSpec>),
-    Member(Ident, Ptr<TypeSpec>, Ptr<Expr>),
+    MemberInit(Ptr<Expr>),
+    MemberTyped(Ptr<TypeSpec>),
+    Member(Ptr<TypeSpec>, Ptr<Expr>),
 }
 #[derive(Debug, Clone)]
 pub struct Field {
     vis: Visibility,
-    kind: FieldKind,
+    name: Ident,
+    pub kind: FieldKind,
     position: Position,
 }
 
 impl Field {
-    pub fn new(vis: Visibility, kind: FieldKind, position: Position) -> Self {
+    pub fn new(vis: Visibility, name: Ident, kind: FieldKind, position: Position) -> Self {
         Self {
             vis,
+            name,
             kind,
             position,
         }
     }
 
+    pub fn vis(&self) -> Visibility {
+        self.vis
+    }
+
     pub fn kind(&self) -> &FieldKind {
         &self.kind
+    }
+
+    pub fn name(&self) -> &Ident {
+        &self.name
+    }
+
+    pub fn name_string(&self) -> &String {
+       &self.name.val
     }
 }
 
@@ -508,19 +578,19 @@ impl AstNode for Field {
 impl TreeRender for Field {
     fn render(&self, idx: u32) {
         match &self.kind {
-            FieldKind::MemberInit(name, init) => {
+            FieldKind::MemberInit(init) => {
                 println!("{}Member Local: {}", indent(idx), self.pos().span);
-                name.render(idx + 1);
+                self.name.render(idx + 1);
                 init.render(idx + 1);
             }
-            FieldKind::MemberTyped(name, types) => {
+            FieldKind::MemberTyped(types) => {
                 println!("{}Member Local: {}", indent(idx), self.pos().span);
-                name.render(idx + 1);
+                self.name.render(idx + 1);
                 types.render(idx + 1);
             }
-            FieldKind::Member(name, types, init) => {
+            FieldKind::Member(types, init) => {
                 println!("{}Member: {}", indent(idx), self.pos().span);
-                name.render(idx + 1);
+                self.name.render(idx + 1);
                 types.render(idx + 1);
                 init.render(idx + 1);
             }
@@ -530,19 +600,136 @@ impl TreeRender for Field {
 }
 
 #[derive(Debug, Clone)]
+pub struct Function {
+    pub name:  Ident,
+    pub type_params: Option<TypeParams>,
+    pub params: Vec<Ptr<Item>>,
+    pub ret: Ptr<TypeSpec>,
+    pub body: Ptr<Expr>,
+}
+
+impl TreeRender for Function {
+    fn render(&self, idx: u32) {
+        let mut pos = self.name.pos().clone();
+        pos.span.extend_node(self.body.as_ref());
+
+        println!("{}Function: {} {}",
+            indent(idx),
+            self.name.value(),
+            pos.span
+        );
+        // println!("{}Vis: {}", indent(idx + 1));
+        self.name.render(idx + 1);
+        self.type_params.as_ref().map(|param| param.render(idx + 1));
+        println!("{}Params:", indent(idx + 1));
+        for param in &self.params {
+            param.render(idx + 1);
+        }
+        println!("{}Return:", indent(idx + 1));
+        self.ret.render(idx + 1);
+        println!("{}Body:", indent(idx + 1));
+        self.body.render(idx + 1);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Structure {
+    pub name: Ident,
+    pub type_params: Option<TypeParams>,
+    pub fields: Vec<Ptr<Item>>
+}
+
+impl TreeRender for Structure {
+    fn render(&self, idx: u32) {
+        let pos = self.name.pos().clone();
+        println!(
+            "{}Structure: {} {}",
+            indent(idx),
+            self.name.value(),
+            pos.span
+        );
+        self.name.render(idx + 1);
+        self.type_params.as_ref().map(|param| param.render(idx + 1));
+        println!("{}Fields:", indent(idx + 1));
+        for field in &self.fields {
+            field.render(idx + 1);
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableInit {
+    pub mutability: Mutability,
+    pub local: Ptr<Pattern>,
+    pub init: Ptr<Expr>
+}
+
+impl TreeRender for VariableInit {
+    fn render(&self, idx: u32) {
+        let mut pos = self.local.pos().clone();
+        pos.span.extend_node(self.init.as_ref());
+
+        println!("{}Init Local: {}", indent(idx), pos);
+        self.local.render(idx + 1);
+        self.init.render(idx + 1);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableTyped {
+    pub mutability: Mutability,
+    pub local: Ptr<Pattern>,
+    pub type_spec: Ptr<TypeSpec>
+}
+
+impl TreeRender for VariableTyped {
+    fn render(&self, idx: u32) {
+        let mut pos = self.local.pos().clone();
+        pos.span.extend_node(self.type_spec.as_ref());
+
+        println!("{}Typed Local: {}", indent(idx), pos.span);
+        self.local.render(idx + 1);
+        self.type_spec.render(idx + 1);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    pub mutability: Mutability,
+    pub local: Ptr<Pattern>,
+    pub type_spec: Ptr<TypeSpec>,
+    pub init: Ptr<Expr>
+}
+
+impl TreeRender for Variable {
+    fn render(&self, idx: u32) {
+        let mut pos = self.local.pos().clone();
+        pos.span.extend_node(self.init.as_ref());
+
+        println!("{}Init Local: {}", indent(idx), pos);
+        self.local.render(idx + 1);
+        self.type_spec.render(idx + 1);
+        self.init.render(idx + 1);
+    }
+}
+
+
+
+
+#[derive(Debug, Clone)]
 pub enum ItemKind {
-    Function(
-        Ident,
-        Option<TypeParams>,
-        Vec<Ptr<Param>>,
-        Ptr<TypeSpec>,
-        Ptr<Expr>,
-    ),
-    Struct(Ident, Option<TypeParams>, Vec<Ptr<Field>>),
+    Funct(Function),
+    Struct(Structure),
     Trait(),
-    LocalInit(Mutability, Ptr<Pattern>, Ptr<Expr>),
-    LocalTyped(Mutability, Ptr<Pattern>, Ptr<TypeSpec>),
-    Local(Mutability, Ptr<Pattern>, Ptr<TypeSpec>, Ptr<Expr>),
+    
+    // TODO: Move Local* to LocalVar(Local)
+    LocalInit(VariableInit),
+    LocalTyped(VariableTyped),
+    Local(Variable),
+
+    StructField(Field),
+    FunctionParam(Param),
+    TypeParam(TypeParam),
     // for items defined by the compiler and are not located in a file.
     Internal,
 }
@@ -550,18 +737,16 @@ pub enum ItemKind {
 #[derive(Debug, Clone)]
 pub struct Item {
     vis: Visibility,
-    kind: ItemKind,
+    pub kind: ItemKind,
     position: Position,
 }
 
 impl Item {
     pub fn internal_ptr() -> Ptr<Item> {
-        use std::path::PathBuf;
-
         Ptr::new(Item::new(
             Visibility::Public,
             ItemKind::Internal,
-            Position::new(FilePos::new(0, 0, PathBuf::new()), Span::new(0, 0)),
+            Position::zero(),
         ))
     }
 
@@ -607,8 +792,26 @@ impl Item {
         use ItemKind::*;
 
         match self.kind() {
-            Function(..) => true,
+            Funct(..) => true,
             _ => false,
+        }
+    }
+
+    pub fn name(&self) -> &String {
+        use ItemKind::*;
+        static INVALID_STRING: String = String::new();
+
+        match self.kind() {
+            Funct(f) => &f.name.val,
+            Struct(s) => &s.name.val,
+            StructField(field) => field.name_string(),
+            FunctionParam(param) => param.name_string(),
+            TypeParam(type_param) => type_param.name_string(),
+            Internal |
+            LocalInit(..) |
+            LocalTyped(..) |
+            Local(..) |
+            Trait() => &INVALID_STRING,
         }
     }
 }
@@ -622,59 +825,30 @@ impl AstNode for Item {
 impl TreeRender for Item {
     fn render(&self, idx: u32) {
         match &self.kind {
-            ItemKind::Function(name, tparams, params, ret, expr) => {
-                println!(
-                    "{}Function: {} {}",
-                    indent(idx),
-                    name.value(),
-                    self.pos().span
-                );
-                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
-                name.render(idx + 1);
-                tparams.as_ref().map(|param| param.render(idx + 1));
-                println!("{}Params:", indent(idx + 1));
-                for param in params {
-                    param.render(idx + 1);
-                }
-                println!("{}Return:", indent(idx + 1));
-                ret.render(idx + 1);
-                println!("{}Body:", indent(idx + 1));
-                expr.render(idx + 1);
+            ItemKind::Funct(f) => {
+                f.render(idx);
             }
-            ItemKind::Struct(name, tparams, fields) => {
-                println!(
-                    "{}Structure: {} {}",
-                    indent(idx),
-                    name.value(),
-                    self.pos().span
-                );
-                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
-                name.render(idx + 1);
-                tparams.as_ref().map(|param| param.render(idx + 1));
-                println!("{}Fields:", indent(idx + 1));
-                for field in fields {
-                    field.render(idx + 1);
-                }
+            ItemKind::Struct(s) => {
+                s.render(idx);
             }
-            ItemKind::LocalInit(_mutability, pattern, init) => {
-                println!("{}Init Local: {}", indent(idx), self.pos().span);
-                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
-                pattern.render(idx + 1);
-                init.render(idx + 1);
+            ItemKind::LocalInit(e) => {
+                e.render(idx)
             }
-            ItemKind::LocalTyped(_mutability, pattern, types) => {
-                println!("{}Typed Local: {}", indent(idx), self.pos().span);
-                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
-                pattern.render(idx + 1);
-                types.render(idx + 1);
+            ItemKind::LocalTyped(e) => {
+                e.render(idx);
             }
-            ItemKind::Local(_mutability, pattern, types, init) => {
-                println!("{}Local: {}", indent(idx), self.pos().span);
-                println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
-                types.render(idx + 1);
-                pattern.render(idx + 1);
-                init.render(idx + 1);
-            }
+            ItemKind::Local(e) => {
+                e.render(idx);
+            },
+            ItemKind::StructField(field) => {
+                field.render(idx);
+            },
+            ItemKind::FunctionParam(param) => {
+                param.render(idx);
+            },
+            ItemKind::TypeParam(type_param) => {
+                type_param.render(idx);
+            },
             _ => {}
         }
     }
@@ -691,7 +865,7 @@ pub enum TypeSpecKind {
 
 #[derive(Debug, Clone)]
 pub struct TypeSpec {
-    kind: TypeSpecKind,
+    pub kind: TypeSpecKind,
     position: Position,
 }
 
@@ -768,7 +942,11 @@ impl ParsedFile {
     }
 
     pub fn items(&self) -> &[Ptr<Item>] {
-        &self.items.as_slice()
+        self.items.as_slice()
+    }
+
+    pub fn items_mut(&mut self) -> &mut [Ptr<Item>] {
+        self.items.as_mut_slice()
     }
 }
 

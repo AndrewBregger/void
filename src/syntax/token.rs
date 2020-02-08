@@ -46,6 +46,10 @@ impl Span {
     pub fn len(&self) -> usize {
         self.end - self.start
     }
+
+    pub fn zero() -> Self {
+        Self::new(0, 0)
+    }
 }
 
 impl Display for Span {
@@ -79,6 +83,10 @@ impl Position {
 
     pub fn extend(&mut self, pos: &Position) {
         self.span.end = pos.span.end;
+    }
+
+    pub fn zero() -> Self {
+        Self::new(FilePos::new(0, 0, PathBuf::new()), Span::zero())
     }
 }
 

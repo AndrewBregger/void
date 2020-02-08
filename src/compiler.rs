@@ -11,8 +11,8 @@ use super::syntax::*;
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 pub struct File {
-    content: String,
-    lines: Vec<String>,
+    pub content: String,
+    pub lines: Vec<String>,
 }
 
 pub type FileRef = Rc<File>;
@@ -25,6 +25,11 @@ impl File {
 
         let lines: Vec<String> = content.as_str().lines().map(|s| s.to_string()).collect();
         Ok(File { content, lines })
+    }
+
+    pub fn line_from_pos(&self, pos: &token::Position) -> &str {
+        let line = pos.line();
+        self.lines[line - 1].as_str()
     }
 }
 
@@ -67,11 +72,11 @@ impl Compiler {
             },
         };
 
-        if let Ok(parsed_file) = parser.parse_file() {
+        if let Ok(mut parsed_file) = parser.parse_file() {
             parsed_file.render(0);
             let mut semantic = semantics::Semantics::new(&mut self.diagnostics, "prelude/mod.rs");
             semantic
-                .check_program(&parsed_file)
+                .check_program(&mut parsed_file)
                 .map_err(|_e| Error::TypeError)?;
             Ok(())
         } else {

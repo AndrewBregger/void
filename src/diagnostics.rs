@@ -1,5 +1,5 @@
 use super::compiler::FileRef;
-use crate::syntax::token::{FilePos, Position, Span};
+use crate::syntax::token::{Position};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -45,18 +45,15 @@ impl Diagnostics {
     }
 
     fn print_source_line(&self, loc: &Position) {
-        // maybe move this somewhere else.
-        let mut file = File::open(&loc.file.source).expect("Failed to find file");
-        file.seek(SeekFrom::Start(loc.span.start as u64))
-            .expect("Failed to seek into file");
-        let mut buf = Vec::with_capacity(loc.span.len());
-        file.read_exact(buf.as_mut_slice())
-            .expect("Failed to read from file");
-
-        let s = std::str::from_utf8(&buf)
-            .expect("Failed to transform buffer")
-            .trim_start();
-        println!(">\t{}", s);
+        if let Some(file) = self.files.get(&loc.file.source) {
+            println!("");
+            println!(">\t{}", file.line_from_pos(loc));
+            println!("");
+        }
+        else {
+            self.fatal(format!("Compiler error: unable to find file at path: {}", loc.file.source.display()).as_str())
+        }
+        
     }
 
     // fn print_message(&self, msg: &str) {
@@ -66,7 +63,7 @@ impl Diagnostics {
         match &msg.loc {
             Some(loc) => {
                 println!("{} | {}: {}", loc, msg.sev.to_string(), msg.msg);
-                // self.print_source_line(&loc);
+                self.print_source_line(&loc);
             }
             None => {
                 println!("{}: {}", msg.sev.to_string(), msg.msg);
@@ -83,5 +80,30 @@ impl Diagnostics {
         };
 
         self.print_message(&msg);
+    }
+
+    pub fn type_error(&mut self, msg: &str, loc: Position) {
+        let msg = Message {
+            msg: msg.to_string(),
+            sev: Severity::Error,
+            loc: Some(loc.clone()),
+        };
+
+        self.print_message(&msg);
+    }
+
+    pub fn fatal(&self, msg: &str) {
+        print!("Fatal Compiler Error: ");
+        println!("{}", msg);
+        std::process::exit(1);
+    }
+
+    pub fn info(&self, msg: &str) {
+        println!("\tInfo: {}", msg);
+    }
+
+    pub fn info_with_line(&self, msg: &str, pos: Position) {
+        self.info(msg);
+        self.print_source_line(&pos);
     }
 }
