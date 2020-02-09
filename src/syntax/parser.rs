@@ -563,7 +563,7 @@ impl<'a> Parser<'a> {
         if self.restrictions.check(Restriction::TypeExprOnly) {
             return Ok(expr);
         }
-        
+
         while self.check_current(|token| token.prec() >= prec_min) {
             // it known this is safe because Self::check_current would have returned
             // false if it was none.
@@ -731,13 +731,8 @@ impl<'a> Parser<'a> {
             }
         }
     }
-
-    fn parse_local_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
+    fn parse_variable_suffix(&mut self) -> Result<(VariableKind, Position)> {
         let mut pos = self.token.pos().clone();
-        let mutability = self.parse_mutability()?;
-        let pattern = self.parse_pattern()?;
-        pos.span.extend_node(pattern.as_ref());
-
         let ty = if self.allow(TokenKind::Control(Ctrl::Colon)) {
             Some(self.parse_typespec()?)
         } else {
@@ -753,16 +748,15 @@ impl<'a> Parser<'a> {
         let kind = match (ty, init) {
             (Some(type_spec), Some(init)) => {
                 pos.span.extend_node(init.as_ref());
-                pos.span.extend_node(init.as_ref());
-                ItemKind::Local(Variable {mutability, local: pattern, type_spec, init})
+                VariableKind::Full(type_spec, init)
             }
             (Some(type_spec), None) => {
                 pos.span.extend_node(type_spec.as_ref());
-                ItemKind::LocalTyped(VariableTyped {mutability, local: pattern, type_spec})
+                VariableKind::Typed(type_spec)
             }
             (None, Some(init)) => {
                 pos.span.extend_node(init.as_ref());
-                ItemKind::LocalInit(VariableInit {mutability, local: pattern, init })
+                VariableKind::Init(init)
             }
             (None, None) => {
                 self.diagnostics.syntax_error(
@@ -772,6 +766,23 @@ impl<'a> Parser<'a> {
                 return Err(Error::ParseError);
             }
         };
+        Ok((kind, pos))
+    }
+
+    fn parse_local_item(&mut self, vis: Visibility) -> Result<Ptr<Item>> {
+        let mut pos = self.token.pos().clone();
+        let mutability = self.parse_mutability()?;
+        let pattern = self.parse_pattern()?;
+        pos.span.extend_node(pattern.as_ref());
+
+        let (kind, pos) = self.parse_variable_suffix()?;
+
+        let kind = ItemKind::LocalVar(Local {
+            mutability,
+            local: pattern,
+            kind,
+            position: pos.clone()
+        });
 
         Ok(Ptr::new(Item::new(vis, kind, pos)))
     }
@@ -849,42 +860,7 @@ impl<'a> Parser<'a> {
         let mut pos = self.token.pos().clone();
         let vis = self.parse_visibility();
         let name = self.parse_ident()?;
-
-        let ty = if self.allow(TokenKind::Control(Ctrl::Colon)) {
-            Some(self.parse_typespec()?)
-        } else {
-            None
-        };
-
-        let init = if self.allow(TokenKind::Operator(Op::Equal)) {
-            Some(self.parse_expr()?)
-        } else {
-            None
-        };
-
-        let kind = match (ty, init) {
-            (Some(ty), Some(exp)) => {
-                pos.span.extend_node(ty.as_ref());
-                pos.span.extend_node(exp.as_ref());
-                FieldKind::Member(ty, exp)
-            }
-            (Some(ty), None) => {
-                pos.span.extend_node(ty.as_ref());
-                FieldKind::MemberTyped(ty)
-            }
-            (None, Some(exp)) => {
-                pos.span.extend_node(exp.as_ref());
-                FieldKind::MemberInit(exp)
-            }
-            (None, None) => {
-                self.diagnostics.syntax_error(
-                    "variable must have either type specification or initializing expression",
-                    self.token.pos(),
-                );
-                return Err(Error::ParseError);
-            }
-        };
-
+        let (kind, pos) = self.parse_variable_suffix()?;
         Ok(Field::new(vis, name, kind, pos))
     }
 
@@ -935,43 +911,9 @@ impl<'a> Parser<'a> {
         };
 
         let name = self.parse_ident()?;
+        let (kind, pos) = self.parse_variable_suffix()?;
 
-        let ty = if self.allow(TokenKind::Control(Ctrl::Colon)) {
-            Some(self.parse_typespec()?)
-        } else {
-            None
-        };
-
-        let init = if self.allow(TokenKind::Operator(Op::Equal)) {
-            Some(self.parse_expr()?)
-        } else {
-            None
-        };
-
-        let kind = match (ty, init) {
-            (Some(ty), Some(exp)) => {
-                pos.span.extend_node(ty.as_ref());
-                pos.span.extend_node(exp.as_ref());
-                ParamKind::Param(name, ty, exp)
-            }
-            (Some(ty), None) => {
-                pos.span.extend_node(ty.as_ref());
-                ParamKind::ParamTyped(name, ty)
-            }
-            (None, Some(exp)) => {
-                pos.span.extend_node(exp.as_ref());
-                ParamKind::ParamInit(name, exp)
-            }
-            (None, None) => {
-                self.diagnostics.syntax_error(
-                    "parameter must have either type specification or initializing expression",
-                    self.token.pos(),
-                );
-                return Err(Error::ParseError);
-            }
-        };
-
-        Ok(Param::new(mutability, kind, pos))
+        Ok(Param::new(mutability, name, kind, pos))
     }
 
     fn parse_parameters(&mut self) -> Result<Vec<Ptr<Item>>> {
@@ -1145,7 +1087,7 @@ impl<'a> Parser<'a> {
 
     fn item_needs_semicolon(&self, item: &Ptr<Item>) -> bool {
         match item.as_ref().kind() {
-            ItemKind::LocalInit(..) | ItemKind::LocalTyped(..) | ItemKind::Local(..) => true,
+            ItemKind::LocalVar(..) => true,
             _ => false,
         }
     }

@@ -459,91 +459,68 @@ impl TreeRender for TypeParams {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ParamKind {
-    ParamInit(Ident, Ptr<Expr>),
-    ParamTyped(Ident, Ptr<TypeSpec>),
-    Param(Ident, Ptr<TypeSpec>, Ptr<Expr>),
-}
 
 #[derive(Debug, Clone)]
-pub struct Param {
-    mutability: Mutability,
-    pub kind: ParamKind,
-    position: Position,
+pub enum VariableKind {
+    Init(Ptr<Expr>),
+    Typed(Ptr<TypeSpec>),
+    Full(Ptr<TypeSpec>, Ptr<Expr>),
 }
 
-impl Param {
-    pub fn new(mutability: Mutability, kind: ParamKind, position: Position) -> Self {
-        Self {
-            mutability,
-            kind,
-            position,
-        }
-    }
-
-    pub fn kind(&self) -> &ParamKind {
-        &self.kind
-    }
-
-    pub fn name(&self) -> &str {
-        self.name_string().as_str()
-    }
-
-    pub fn name_string(&self) -> &String {
-        use ParamKind::*;
-
-        match self.kind() {
-            ParamInit(n, ..) |
-            ParamTyped(n, ..) |
-            Param(n, ..) => &n.val
+impl TreeRender for VariableKind {
+    fn render(&self, idx: u32) {
+        use VariableKind::*;
+        match &self {
+            Init(init) => {
+                println!("{}Init:", indent(idx));
+                init.render(idx + 1);
+            }
+            Typed(types) => {
+                println!("{}Typed:", indent(idx));
+                types.render(idx + 1);
+            }
+            Full(types, init) => {
+                println!("{}Full:", indent(idx));
+                types.render(idx + 1);
+                init.render(idx + 1);
+            }
         }
     }
 }
 
-impl AstNode for Param {
+#[derive(Debug, Clone)]
+pub struct Local {
+    pub mutability: Mutability,
+    pub local: Ptr<Pattern>,
+    pub kind: VariableKind,
+    pub position: Position
+}
+
+impl AstNode for Local {
     fn pos(&self) -> &Position {
         &self.position
     }
 }
 
-impl TreeRender for Param {
+impl TreeRender for Local {
     fn render(&self, idx: u32) {
-        match self.kind() {
-            ParamKind::ParamInit(name, init) => {
-                println!("{}Init Param: {}", indent(idx), name.value());
-
-                init.render(idx + 1);
-            }
-            ParamKind::ParamTyped(name, types) => {
-                println!("{}Typed Param: {}", indent(idx), name.value());
-                types.render(idx + 1);
-            }
-            ParamKind::Param(name, types, init) => {
-                println!("{}Param: {}", indent(idx), name.value());
-                types.render(idx + 1);
-                init.render(idx + 1);
-            }
-        }
+        println!("{}Field:", indent(idx));
+        println!("{}Mut: {}", indent(idx + 1), self.mutability.to_string());
+        self.local.render(idx + 1);
+        self.kind.render(idx + 1);
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum FieldKind {
-    MemberInit(Ptr<Expr>),
-    MemberTyped(Ptr<TypeSpec>),
-    Member(Ptr<TypeSpec>, Ptr<Expr>),
-}
-#[derive(Debug, Clone)]
 pub struct Field {
     vis: Visibility,
     name: Ident,
-    pub kind: FieldKind,
+    pub kind: VariableKind,
     position: Position,
 }
 
 impl Field {
-    pub fn new(vis: Visibility, name: Ident, kind: FieldKind, position: Position) -> Self {
+    pub fn new(vis: Visibility, name: Ident, kind: VariableKind, position: Position) -> Self {
         Self {
             vis,
             name,
@@ -556,7 +533,7 @@ impl Field {
         self.vis
     }
 
-    pub fn kind(&self) -> &FieldKind {
+    pub fn kind(&self) -> &VariableKind {
         &self.kind
     }
 
@@ -577,25 +554,56 @@ impl AstNode for Field {
 
 impl TreeRender for Field {
     fn render(&self, idx: u32) {
-        match &self.kind {
-            FieldKind::MemberInit(init) => {
-                println!("{}Member Local: {}", indent(idx), self.pos().span);
-                self.name.render(idx + 1);
-                init.render(idx + 1);
-            }
-            FieldKind::MemberTyped(types) => {
-                println!("{}Member Local: {}", indent(idx), self.pos().span);
-                self.name.render(idx + 1);
-                types.render(idx + 1);
-            }
-            FieldKind::Member(types, init) => {
-                println!("{}Member: {}", indent(idx), self.pos().span);
-                self.name.render(idx + 1);
-                types.render(idx + 1);
-                init.render(idx + 1);
-            }
-            _ => {}
+        println!("{}Field:", indent(idx));
+        println!("{}Vis: {}", indent(idx + 1), self.vis.to_string());
+        self.name.render(idx + 1);
+        self.kind.render(idx + 1);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Param {
+    mutability: Mutability,
+    name: Ident,
+    pub kind: VariableKind,
+    position: Position,
+}
+
+impl Param {
+    pub fn new(mutability: Mutability, name: Ident, kind: VariableKind, position: Position) -> Self {
+        Self {
+            mutability,
+            name,
+            kind,
+            position,
         }
+    }
+
+    pub fn kind(&self) -> &VariableKind {
+        &self.kind
+    }
+
+    pub fn name(&self) -> &str {
+        self.name_string().as_str()
+    }
+
+    pub fn name_string(&self) -> &String {
+       &self.name.val
+    }
+}
+
+impl AstNode for Param {
+    fn pos(&self) -> &Position {
+        &self.position
+    }
+}
+
+impl TreeRender for Param {
+    fn render(&self, idx: u32) {
+        println!("{}Param:", indent(idx));
+        println!("{}Mut: {}", indent(idx + 1), self.mutability.to_string());
+        self.name.render(idx + 1);
+        self.kind.render(idx + 1);
     }
 }
 
@@ -658,75 +666,11 @@ impl TreeRender for Structure {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableInit {
-    pub mutability: Mutability,
-    pub local: Ptr<Pattern>,
-    pub init: Ptr<Expr>
-}
-
-impl TreeRender for VariableInit {
-    fn render(&self, idx: u32) {
-        let mut pos = self.local.pos().clone();
-        pos.span.extend_node(self.init.as_ref());
-
-        println!("{}Init Local: {}", indent(idx), pos);
-        self.local.render(idx + 1);
-        self.init.render(idx + 1);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct VariableTyped {
-    pub mutability: Mutability,
-    pub local: Ptr<Pattern>,
-    pub type_spec: Ptr<TypeSpec>
-}
-
-impl TreeRender for VariableTyped {
-    fn render(&self, idx: u32) {
-        let mut pos = self.local.pos().clone();
-        pos.span.extend_node(self.type_spec.as_ref());
-
-        println!("{}Typed Local: {}", indent(idx), pos.span);
-        self.local.render(idx + 1);
-        self.type_spec.render(idx + 1);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Variable {
-    pub mutability: Mutability,
-    pub local: Ptr<Pattern>,
-    pub type_spec: Ptr<TypeSpec>,
-    pub init: Ptr<Expr>
-}
-
-impl TreeRender for Variable {
-    fn render(&self, idx: u32) {
-        let mut pos = self.local.pos().clone();
-        pos.span.extend_node(self.init.as_ref());
-
-        println!("{}Init Local: {}", indent(idx), pos);
-        self.local.render(idx + 1);
-        self.type_spec.render(idx + 1);
-        self.init.render(idx + 1);
-    }
-}
-
-
-
-
-#[derive(Debug, Clone)]
 pub enum ItemKind {
     Funct(Function),
     Struct(Structure),
     Trait(),
-    
-    // TODO: Move Local* to LocalVar(Local)
-    LocalInit(VariableInit),
-    LocalTyped(VariableTyped),
-    Local(Variable),
-
+    LocalVar(Local),
     StructField(Field),
     FunctionParam(Param),
     TypeParam(TypeParam),
@@ -794,7 +738,7 @@ impl Item {
         use ItemKind::*;
 
         match self.kind() {
-            LocalInit(..) | LocalTyped(..) | Local(..) => true,
+           LocalVar(_) => true,
             _ => false,
         }
     }
@@ -836,13 +780,7 @@ impl Item {
             StructField(field) => field.name_string(),
             FunctionParam(param) => param.name_string(),
             TypeParam(type_param) => type_param.name_string(),
-            Internal |
-            Primative |
-            Invalid |
-            LocalInit(..) |
-            LocalTyped(..) |
-            Local(..) |
-            Trait() => &INVALID_STRING,
+            _ => &INVALID_STRING,
         }
     }
 }
@@ -862,14 +800,8 @@ impl TreeRender for Item {
             ItemKind::Struct(s) => {
                 s.render(idx);
             }
-            ItemKind::LocalInit(e) => {
-                e.render(idx)
-            }
-            ItemKind::LocalTyped(e) => {
-                e.render(idx);
-            }
-            ItemKind::Local(e) => {
-                e.render(idx);
+            ItemKind::LocalVar(local) => {
+                local.render(idx);
             },
             ItemKind::StructField(field) => {
                 field.render(idx);

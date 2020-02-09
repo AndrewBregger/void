@@ -46,15 +46,7 @@ impl<'env> Environment<'env> {
                 let name = item.name();
                 self.scope_manager.lookup_current(name)
             },
-            LocalInit(VariableInit {
-                local,
-                ..
-            }) |
-            LocalTyped(VariableTyped {
-                local,
-                ..
-            }) |
-            Local(Variable {
+            LocalVar(Local {
                 local,
                 ..
             }) => {
@@ -223,7 +215,7 @@ impl<'diag> Typer<'diag> {
     }
 
     fn resolve_struct_field<'env>(&mut self, env: &mut Environment<'env>, item: &mut Ptr<Item>) -> Result<ItemInfo> {
-        use FieldKind::*;
+        use VariableKind::*;
 
         println!("{}:{}|resolve_struct_field({})", file!(), line!(), item.name());
         
@@ -239,9 +231,9 @@ impl<'diag> Typer<'diag> {
                 }
 
                 let expr_type = match &mut field.kind {
-                    MemberInit(ref mut init) => self.resolve_expr(env, init, None),
-                    MemberTyped(ref mut type_spec) => self.resolve_type_spec(env, type_spec),
-                    Member(ref mut type_spec, ref mut init) => {
+                    Init(ref mut init) => self.resolve_expr(env, init, None),
+                    Typed(ref mut type_spec) => self.resolve_type_spec(env, type_spec),
+                    Full(ref mut type_spec, ref mut init) => {
                         let type_spec = self.resolve_type_spec(env, type_spec)?;
                         self.resolve_expr(env, init, Some(&type_spec))?;
                         Ok(type_spec)
@@ -294,15 +286,7 @@ impl<'diag> Typer<'diag> {
         Ok(info.resolve(Type::new(TypeKind::Struct(ty))))
     }
 
-    fn resolve_variable_init<'env>(&mut self, env: &mut Environment<'env>, variable: &VariableInit) -> Result<ItemInfo> {
-        unimplemented!()
-    }
-
-    fn resolve_variable_typed<'env>(&mut self, env: &mut Environment<'env>, variable: &VariableTyped) -> Result<ItemInfo> {
-        unimplemented!()
-    }
-
-    fn resolve_variable<'env>(&mut self, env: &mut Environment<'env>, variable: &Variable) -> Result<ItemInfo> {
+    fn resolve_local<'env>(&mut self, env: &mut Environment<'env>, variable: &Local) -> Result<ItemInfo> {
         unimplemented!()
     }
 
@@ -326,9 +310,7 @@ impl<'diag> Typer<'diag> {
         let info = match item.kind {
             ItemKind::Funct(ref mut funct) => self.resovle_function(env, funct),
             ItemKind::Struct(ref mut structure) => self.resolve_structure(env, structure),
-            ItemKind::LocalInit(ref mut variable) => self.resolve_variable_init(env, variable),
-            ItemKind::LocalTyped(ref mut variable) => self.resolve_variable_typed(env, variable),
-            ItemKind::Local(ref mut variable) => self.resolve_variable(env, variable),
+            ItemKind::LocalVar(ref mut variable) => self.resolve_local(env, variable),
             _ => {
                 Err(Error::TypeError)
             },
